@@ -15,7 +15,7 @@ const INITIAL_PLAYERS: Player[] = [
 ];
 
 function App() {
-  const [gameState, setGameState] = useState<GameState>(GameState.SETUP);
+  const [gameState, setGameState] = useState<GameState>(GameState.WELCOME);
   const [currentRound, setCurrentRound] = useState(1);
   const [players, setPlayers] = useState<Player[]>(INITIAL_PLAYERS);
   const [activePlayerIndex, setActivePlayerIndex] = useState(0);
@@ -33,6 +33,7 @@ function App() {
   // Config State
   const [mysteryRoundTarget, setMysteryRoundTarget] = useState<number | null>(null); // 0 = None
   const [totalRounds, setTotalRounds] = useState(3);
+  const [mysteryRevealed, setMysteryRevealed] = useState(false);
 
   // Bonus Round Vars
   const [bonusRoundSelection, setBonusRoundSelection] = useState<string[]>([]);
@@ -48,27 +49,35 @@ function App() {
       // 0 = None
       // 1, 2, 3 = Replace Round
       // 4 = Extra Round (Total 4)
+      let overrideMystery: number | null = null;
       if (mysteryChoice === 4) {
           setTotalRounds(4);
           setMysteryRoundTarget(4);
+          overrideMystery = 4;
       } else {
           setTotalRounds(3);
-          setMysteryRoundTarget(mysteryChoice === 0 ? null : mysteryChoice);
+          const target = mysteryChoice === 0 ? null : mysteryChoice;
+          setMysteryRoundTarget(target);
+          overrideMystery = target;
       }
-      startGame();
+      startGame(overrideMystery);
   };
 
-  const startGame = () => {
+  const startGame = (mysteryOverride: number | null = null) => {
     setPlayers(INITIAL_PLAYERS);
     setCurrentRound(1);
     setActivePlayerIndex(0); 
-    startRound(1, 0);
+    // Reset state properly for first round
+    startRound(1, 0, mysteryOverride);
   };
 
-  const startRound = async (roundNum: number, startPlayerIndex: number) => {
+  const startRound = async (roundNum: number, startPlayerIndex: number, mysteryOverride: number | null = null) => {
     setGameState(GameState.SETUP);
     
-    const isMystery = roundNum === mysteryRoundTarget;
+    // Use override if provided (at start of game), otherwise current state
+    const targetRound = mysteryOverride !== null ? mysteryOverride : mysteryRoundTarget;
+    const isMystery = roundNum === targetRound;
+    
     setMessage(isMystery ? `MYSTERY RUNDE ${roundNum}!` : `Runde ${roundNum} wird generiert...`);
     
     // Reset Round Score AND Extra Spin (only valid in active round)
@@ -76,6 +85,7 @@ function App() {
     setGuessedLetters(new Set());
     setLastSpinResult(null);
     setActivePlayerIndex(startPlayerIndex);
+    setMysteryRevealed(false);
     
     try {
       // If Round 4 exists, make it Hard too
@@ -85,8 +95,9 @@ function App() {
       setUsedCategories(prev => [...prev, newPuzzle.category]);
       setGameState(GameState.ROUND_START);
       setTimeout(() => setGameState(GameState.SPIN_OR_SOLVE), 2500);
-    } catch (e: any) {
-      console.error("Failed to start round", e.message || String(e));
+    } catch (e: unknown) {
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      console.error("Failed to start round", errorMessage);
     }
   };
 
@@ -112,6 +123,45 @@ function App() {
       } else {
           setMessage('Kein Extra Dreh eingesetzt.');
           setTimeout(nextTurn, 1000);
+      }
+  };
+
+  const handleMysteryDecision = (reveal: boolean) => {
+      const multiplier = Math.pow(2, currentRound - 1);
+      
+      if (!reveal) {
+          // Safe option: Take 1000 * multiplier
+          const val = 1000 * multiplier;
+          setLastSpinResult(val);
+          setMessage(`Sicher gespielt: 1.000er Wert.`);
+          setGameState(GameState.GUESSING_CONSONANT);
+      } else {
+          // Risk option
+          setMysteryRevealed(true);
+          // 50/50
+          const isGood = Math.random() > 0.5;
+          if (isGood) {
+             const val = 10000 * multiplier;
+             setLastSpinResult(val);
+             soundService.playCorrect();
+             setMessage(`GLÜCKWUNSCH! 10.000er WERT!`);
+             // Delay slightly so they see the message
+             setTimeout(() => setGameState(GameState.GUESSING_CONSONANT), 1500);
+          } else {
+             // Bankrupt
+             soundService.playBankrupt();
+             setPlayers(prev => {
+                const copy = [...prev];
+                copy[activePlayerIndex].roundScore = 0;
+                return copy;
+             });
+             if (players[activePlayerIndex].hasExtraSpin) {
+                 setGameState(GameState.EXTRA_SPIN_PROMPT);
+             } else {
+                 setMessage('BANKROTT! Risiko verloren.');
+                 setTimeout(nextTurn, 2000);
+             }
+          }
       }
   };
 
@@ -191,9 +241,7 @@ function App() {
       setTimeout(() => {
           setIsSpinning(false);
           // Prize is determined!
-          // Determine random prize for now based on segment or just random, since BONUS_SEGMENTS have "?"
-          // Let's generate the prize value here randomly
-          const prizes = [10000, 20000, 30000, 40000, 50000, 75000, 100000, 1000000]; // Added 1M for excitement
+          const prizes = [10000, 20000, 30000, 40000, 50000, 75000, 100000, 1000000]; 
           const wonPrize = prizes[Math.floor(Math.random() * prizes.length)];
           setBonusPrize(wonPrize);
           
@@ -216,8 +264,14 @@ function App() {
     // If Mystery Round, we must simulate the injected segments
     let currentSegments = [...SEGMENTS];
     if (currentRound === mysteryRoundTarget) {
-        currentSegments[6] = { text: '?', value: 0, type: SegmentType.MYSTERY, color: '#7E22CE', textColor: '#fff' };
-        currentSegments[17] = { text: '?', value: 0, type: SegmentType.MYSTERY, color: '#7E22CE', textColor: '#fff' };
+        if (!mysteryRevealed) {
+            currentSegments[6] = { text: '?', value: 0, type: SegmentType.MYSTERY, color: '#7E22CE', textColor: '#fff' };
+            currentSegments[17] = { text: '?', value: 0, type: SegmentType.MYSTERY, color: '#7E22CE', textColor: '#fff' };
+        } else {
+            // They are 1000 wedges now
+            currentSegments[6] = { text: '1000', value: 1000, type: SegmentType.VALUE, color: '#9333EA', textColor: '#fff' };
+            currentSegments[17] = { text: '1000', value: 1000, type: SegmentType.VALUE, color: '#9333EA', textColor: '#fff' };
+        }
     }
 
     const segmentAngle = 360 / currentSegments.length; 
@@ -230,29 +284,16 @@ function App() {
     const multiplier = Math.pow(2, currentRound - 1);
     let calculatedValue = segment.value * multiplier;
     
-    // Handle Mystery Logic randomly
-    let mysteryType: SegmentType | null = null;
-
     if (segment.type === SegmentType.MYSTERY) {
-        // 50/50 Chance: 10,000 DM or Bankrupt
-        const isGood = Math.random() > 0.5;
-        if (isGood) {
-            calculatedValue = 10000 * multiplier; // Multiplier applies? Sure.
-            setMessage("MYSTERY: 10.000 DM!");
-            soundService.playCorrect();
-        } else {
-            mysteryType = SegmentType.BANKRUPT;
-            setMessage("MYSTERY: BANKROTT!");
-        }
+        // Go to decision mode
+        setMessage("MYSTERY FELD! Risiko oder Sicherheit?");
+        setGameState(GameState.MYSTERY_DECISION);
+        // processSegment is NOT called yet. handleMysteryDecision will handle it.
+        return;
     }
 
     setLastSpinResult(calculatedValue);
-    
-    if (mysteryType === SegmentType.BANKRUPT) {
-        processSegment({ ...segment, type: SegmentType.BANKRUPT }, 0);
-    } else {
-        processSegment(segment, calculatedValue);
-    }
+    processSegment(segment, calculatedValue);
   };
 
   const processSegment = (segment: any, actualValue: number) => {
@@ -289,7 +330,7 @@ function App() {
              setMessage('EXTRA DREH GEWONNEN! NOCHMAL DREHEN!');
              setGameState(GameState.SPIN_OR_SOLVE);
         } else {
-             // Value or Mystery Value
+             // Value or standard Value
              setGameState(GameState.GUESSING_CONSONANT);
         }
     }, 500);
@@ -433,8 +474,9 @@ function App() {
           setPuzzle(newPuzzle);
           setBonusRoundSelection([]);
           setGameState(GameState.BONUS_WHEEL_SPIN);
-      } catch (e: any) {
-          console.error(e.message || String(e));
+      } catch (e: unknown) {
+          const errorMessage = e instanceof Error ? e.message : String(e);
+          console.error(errorMessage);
       }
   };
 
@@ -493,7 +535,7 @@ function App() {
             />
         </div>
 
-        {(gameState !== GameState.BONUS_ROUND_INTRO && gameState !== GameState.BONUS_WHEEL_SPIN && gameState !== GameState.BONUS_ROUND_SELECTION && gameState !== GameState.BONUS_ROUND_SOLVE && gameState !== GameState.EXTRA_SPIN_PROMPT && gameState !== GameState.GAME_CONFIG && gameState !== GameState.SETUP) && (
+        {(gameState !== GameState.BONUS_ROUND_INTRO && gameState !== GameState.BONUS_WHEEL_SPIN && gameState !== GameState.BONUS_ROUND_SELECTION && gameState !== GameState.BONUS_ROUND_SOLVE && gameState !== GameState.EXTRA_SPIN_PROMPT && gameState !== GameState.GAME_CONFIG && gameState !== GameState.SETUP && gameState !== GameState.WELCOME) && (
             <div className="flex flex-col xl:flex-row w-full items-center justify-center gap-8">
                 <div className="flex-shrink-0 scale-90 md:scale-100">
                     <Wheel 
@@ -502,6 +544,7 @@ function App() {
                         currentRound={currentRound}
                         isBonusWheelMode={false}
                         isMysteryRound={currentRound === mysteryRoundTarget}
+                        mysteryRevealed={mysteryRevealed}
                     />
                 </div>
 
@@ -536,6 +579,7 @@ function App() {
                     currentRound={currentRound}
                     isBonusWheelMode={true}
                     isMysteryRound={false}
+                    mysteryRevealed={false}
                  />
              </div>
         )}
@@ -559,13 +603,14 @@ function App() {
                 onBonusSubmit={handleBonusSubmit}
                 onExtraSpinDecision={handleExtraSpinDecision}
                 onConfigSelect={handleConfigSelect}
+                onMysteryDecision={handleMysteryDecision}
              />
         </div>
       </main>
 
       {/* Overlays */}
       
-      {gameState === GameState.SETUP && currentRound === 1 && activePlayerIndex === 0 && !puzzle && (
+      {gameState === GameState.WELCOME && (
         <div className="fixed inset-0 bg-black/95 z-[60] flex flex-col items-center justify-center text-center p-4">
            <h1 className="text-7xl md:text-9xl font-display text-transparent bg-clip-text bg-gradient-to-b from-yellow-300 to-orange-600 mb-8 drop-shadow-[0_0_35px_rgba(234,179,8,0.6)]">
                GLÜCKSRAD
@@ -617,8 +662,7 @@ function App() {
 
             <button 
                 onClick={() => {
-                    setGameState(GameState.SETUP);
-                    startGame();
+                    setGameState(GameState.WELCOME);
                 }}
                 className="bg-blue-600 hover:bg-blue-500 text-white text-2xl font-bold py-4 px-12 rounded-full shadow-lg"
             >

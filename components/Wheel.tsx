@@ -52,9 +52,10 @@ interface WheelProps {
   currentRound: number;
   isBonusWheelMode: boolean;
   isMysteryRound: boolean;
+  mysteryRevealed: boolean;
 }
 
-const Wheel: React.FC<WheelProps> = ({ rotation, activePlayerIndex, currentRound, isBonusWheelMode, isMysteryRound }) => {
+const Wheel: React.FC<WheelProps> = ({ rotation, activePlayerIndex, currentRound, isBonusWheelMode, isMysteryRound, mysteryRevealed }) => {
   
   // If Mystery Round, replace two low value segments with MYSTERY segments
   let segments = isBonusWheelMode ? BONUS_SEGMENTS : SEGMENTS;
@@ -62,10 +63,18 @@ const Wheel: React.FC<WheelProps> = ({ rotation, activePlayerIndex, currentRound
   if (isMysteryRound && !isBonusWheelMode) {
       // Clone segments to avoid mutating global constant
       segments = [...SEGMENTS];
-      // Replace '150' and '200' at specific indices with Mystery
+      // Replace '150' and '200' at specific indices
       // Index 6 (200 Red) and Index 17 (150 Light Orange)
-      segments[6] = { text: '?', value: 0, type: SegmentType.MYSTERY, color: '#7E22CE', textColor: '#fff' }; // Purple
-      segments[17] = { text: '?', value: 0, type: SegmentType.MYSTERY, color: '#7E22CE', textColor: '#fff' }; // Purple
+      
+      if (!mysteryRevealed) {
+        segments[6] = { text: '?', value: 0, type: SegmentType.MYSTERY, color: '#7E22CE', textColor: '#fff' }; // Purple Mystery
+        segments[17] = { text: '?', value: 0, type: SegmentType.MYSTERY, color: '#7E22CE', textColor: '#fff' }; // Purple Mystery
+      } else {
+        // Revealed: They become 1000 wedges (but keep a purple hint or just standard yellow? Prompt: "wird zu einem 1000er feld")
+        // Let's make them distinct 1000 wedges to show they changed
+        segments[6] = { text: '1000', value: 1000, type: SegmentType.VALUE, color: '#9333EA', textColor: '#fff' }; // Purple 1000
+        segments[17] = { text: '1000', value: 1000, type: SegmentType.VALUE, color: '#9333EA', textColor: '#fff' }; // Purple 1000
+      }
   }
 
   const numSegments = segments.length;
@@ -137,7 +146,7 @@ const Wheel: React.FC<WheelProps> = ({ rotation, activePlayerIndex, currentRound
             if (!isBonusWheelMode && seg.type === SegmentType.VALUE) {
                 displayText = (seg.value * multiplier).toString();
             }
-            // Mystery text stays '?'
+            // Mystery text '?' or '1000' handled by segments array definition above
             
             const chars = displayText.split('');
             

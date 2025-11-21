@@ -20,6 +20,7 @@ interface ControlsProps {
   onBonusSubmit: () => void;
   onExtraSpinDecision: (use: boolean) => void;
   onConfigSelect: (mysteryRound: number) => void; // 0 = none, 1-4 = specific round
+  onMysteryDecision: (reveal: boolean) => void;
 }
 
 const Controls: React.FC<ControlsProps> = ({
@@ -39,7 +40,8 @@ const Controls: React.FC<ControlsProps> = ({
   onBonusSelect,
   onBonusSubmit,
   onExtraSpinDecision,
-  onConfigSelect
+  onConfigSelect,
+  onMysteryDecision
 }) => {
   const [solveInput, setSolveInput] = useState('');
 
@@ -96,6 +98,35 @@ const Controls: React.FC<ControlsProps> = ({
                  className="bg-red-600 hover:bg-red-500 text-white font-bold py-4 px-10 rounded-lg shadow-[0_4px_0_rgb(220,38,38)] active:shadow-none active:translate-y-1 transition-all text-xl"
                >
                    NEIN
+               </button>
+           </div>
+        </div>
+    );
+  }
+
+  // Mystery Decision
+  if (gameState === GameState.MYSTERY_DECISION) {
+    return (
+        <div className="w-full max-w-4xl mx-auto mt-6 p-6 bg-purple-900/90 rounded-xl backdrop-blur-sm border-2 border-purple-500 text-center shadow-2xl animate-fade-in">
+           <h2 className="text-4xl font-display text-white mb-2 drop-shadow-lg">MYSTERY FELD!</h2>
+           <p className="text-xl text-gray-200 mb-8 max-w-lg mx-auto">
+               Du kannst das Feld aufdecken (Chance auf 10.000 DM oder BANKROTT) 
+               oder sicher 1.000 DM nehmen.
+           </p>
+           <div className="flex flex-wrap justify-center gap-6">
+               <button 
+                 onClick={() => onMysteryDecision(true)} 
+                 className="bg-gradient-to-b from-purple-600 to-purple-800 hover:from-purple-500 hover:to-purple-700 text-white font-bold py-6 px-12 rounded-xl shadow-[0_0_20px_rgba(168,85,247,0.6)] active:scale-95 transition-all text-2xl border-2 border-yellow-400"
+               >
+                   AUFDECKEN
+                   <div className="text-sm font-normal mt-1 text-yellow-200">Risiko!</div>
+               </button>
+               <button 
+                 onClick={() => onMysteryDecision(false)} 
+                 className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-6 px-12 rounded-xl shadow-lg active:scale-95 transition-all text-2xl border border-gray-500"
+               >
+                   1.000 DM NEHMEN
+                   <div className="text-sm font-normal mt-1 text-gray-300">Sicher</div>
                </button>
            </div>
         </div>
@@ -179,7 +210,7 @@ const Controls: React.FC<ControlsProps> = ({
       )
   }
 
-  if (gameState === GameState.SETUP || gameState === GameState.ROUND_END || gameState === GameState.GAME_OVER || gameState === GameState.BONUS_ROUND_INTRO) {
+  if (gameState === GameState.SETUP || gameState === GameState.ROUND_END || gameState === GameState.GAME_OVER || gameState === GameState.BONUS_ROUND_INTRO || gameState === GameState.WELCOME) {
     return null;
   }
 

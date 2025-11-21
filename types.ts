@@ -32,10 +32,12 @@ export interface Puzzle {
 
 export enum GameState {
   GAME_CONFIG,         // New: Setup options
+  WELCOME,             // Start screen
   SETUP,
   ROUND_START,
   SPIN_OR_SOLVE,
   SPINNING,
+  MYSTERY_DECISION,    // New: Player decides to flip mystery or not
   GUESSING_CONSONANT,
   BUYING_VOWEL,
   SOLVING,
