@@ -119,7 +119,7 @@ function App() {
           setGameState(GameState.TOSS_UP);
           
           // Start auto-reveal
-          const allLetters = (newPuzzle.text as string).replace(/[^A-ZÄÖÜß]/g, '').split('');
+          const allLetters = newPuzzle.text.replace(/[^A-ZÄÖÜß]/g, '').split('');
           const uniqueLetters = Array.from(new Set(allLetters));
           
           let revealStep = 0;
@@ -137,7 +137,7 @@ function App() {
           }, 1200); 
           setTossUpInterval(interval);
 
-      } catch (e: unknown) {
+      } catch (e: any) {
           const errorMessage = e instanceof Error ? e.message : String(e);
           console.error(errorMessage);
           startRound(1, 0, config);
@@ -181,7 +181,7 @@ function App() {
       setUsedCategories(prev => [...prev, newPuzzle.category]);
       setGameState(GameState.ROUND_START);
       setTimeout(() => setGameState(GameState.SPIN_OR_SOLVE), 2500);
-    } catch (e: unknown) {
+    } catch (e: any) {
       const errorMessage = e instanceof Error ? e.message : String(e);
       console.error("Failed to start round", errorMessage);
     }
@@ -708,7 +708,7 @@ function App() {
           setGuessedLetters(initialLetters);
 
           setGameState(GameState.BONUS_WHEEL_SPIN);
-      } catch (e: unknown) {
+      } catch (e: any) {
           const errorMessage = e instanceof Error ? e.message : String(e);
           console.error(errorMessage);
       }

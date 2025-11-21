@@ -86,6 +86,11 @@ const Wheel: React.FC<WheelProps> = ({
           segments[23] = { text: 'GESCHENK', value: 1000, type: SegmentType.GIFT, color: '#EC4899', textColor: '#fff' };
       }
 
+      // RISK MODE (50/50): Replaces Index 4 (500 Amber)
+      if (config.riskMode === 4 || config.riskMode === currentRound) {
+          segments[4] = { text: 'RISIKO', value: 0, type: SegmentType.RISK, color: '#000000', textColor: '#F97316' };
+      }
+
       // Mystery Round Logic (Overwrites standard segments if it's mystery round)
       if (isMysteryRound) {
           if (!mysteryRevealed) {
@@ -164,7 +169,10 @@ const Wheel: React.FC<WheelProps> = ({
                 displayText = (seg.value * multiplier).toString();
             }
             if (seg.type === SegmentType.JACKPOT) {
-                displayText = "JACKPOT"; // Special visual handling below
+                displayText = "JACKPOT"; 
+            }
+            if (seg.type === SegmentType.RISK) {
+                displayText = "RISIKO";
             }
             
             const chars = displayText.split('');

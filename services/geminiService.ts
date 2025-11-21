@@ -28,6 +28,21 @@ export class GeminiService {
         if (theme === 'KIDS') themePrompt = "The puzzle must be suitable for children (Fairy tales, Animals, Simple things).";
         if (theme === 'GEO') themePrompt = "The puzzle must be related to Geography (Cities, Countries, Landmarks).";
         if (theme === 'MOVIES') themePrompt = "The puzzle must be a Movie Title or Actor.";
+        if (theme === 'TV') themePrompt = "The puzzle must be related to Television (Shows, Hosts, Series).";
+        if (theme === 'RETRO') themePrompt = "The puzzle must be related to Retro topics (Nostalgia, Old tech, Old trends).";
+        if (theme === 'MUSIC') themePrompt = "The puzzle must be related to Music (Songs, Bands, Singers).";
+        if (theme === 'RETRO_TV') themePrompt = "The puzzle must be related to classic TV shows from the past (Cult classics).";
+        if (theme === '50S') themePrompt = "The puzzle must be related to the 1950s.";
+        if (theme === '60S') themePrompt = "The puzzle must be related to the 1960s.";
+        if (theme === '70S') themePrompt = "The puzzle must be related to the 1970s.";
+        if (theme === '90S') themePrompt = "The puzzle must be related to the 1990s.";
+        if (theme === '2000S') themePrompt = "The puzzle must be related to the 2000s.";
+        if (theme === 'GDR') themePrompt = "The puzzle must be related to the DDR (East Germany), its culture, products, or history.";
+        if (theme === 'POLITICS') themePrompt = "The puzzle must be related to Politics or History.";
+        if (theme === 'JOB') themePrompt = "The puzzle must be a Profession or Job title.";
+        if (theme === 'IDIOM') themePrompt = "The puzzle must be a common German Idiom or Proverb (Redewendung).";
+        if (theme === 'PERSON') themePrompt = "The puzzle must be a Famous Person.";
+        if (theme === 'HEADLINES') themePrompt = "The puzzle must be a famous Headline or Historical Event.";
         
         const prompt = `
           Generate a German word puzzle for a "Wheel of Fortune" style game.

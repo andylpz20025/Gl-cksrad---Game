@@ -7,7 +7,8 @@ export enum SegmentType {
   MYSTERY = 'MYSTERY',
   JACKPOT = 'JACKPOT',
   FREE_PLAY = 'FREE_PLAY',
-  GIFT = 'GIFT'
+  GIFT = 'GIFT',
+  RISK = 'RISK'
 }
 
 export interface WheelSegment {
@@ -44,6 +45,7 @@ export interface GameConfig {
   enableTTS: boolean; // Text to Speech
   enableAvatars: boolean;
   categoryTheme: string; // 'ALL', '80s', 'KIDS', etc.
+  riskMode: number; // 0=Off, 1-3=Round, 4=All Rounds
 }
 
 export enum GameState {
@@ -55,6 +57,7 @@ export enum GameState {
   SPIN_OR_SOLVE,
   SPINNING,
   MYSTERY_DECISION,    // New: Player decides to flip mystery or not
+  RISK_DECISION,       // New: Player decides to risk score or play safe
   GUESSING_CONSONANT,
   BUYING_VOWEL,
   SOLVING,

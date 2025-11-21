@@ -78,7 +78,8 @@ const PuzzleBoard: React.FC<PuzzleBoardProps> = ({ puzzle, guessedLetters, revea
             {row.map((char, cIndex) => {
               const isSpace = char === '' || char === ' ';
               const isHyphen = char === '-';
-              // Automatically reveal if it's a hyphen
+              // Automatically reveal if it's a hyphen OR a digit (though App.tsx handles guessedLetters addition for digits too)
+              // We check guessedLetters for logic consistency.
               const isRevealed = !isSpace && (guessedLetters.has(char) || isHyphen);
               const key = `${rIndex}-${cIndex}`;
 

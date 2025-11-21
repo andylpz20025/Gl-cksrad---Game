@@ -8,6 +8,16 @@ interface PlayerScoreboardProps {
 }
 
 const PlayerScoreboard: React.FC<PlayerScoreboardProps> = ({ players, activePlayerId }) => {
+  
+  const getGiftIcon = (name: string) => {
+      if (name.includes('AUTO')) return '🚗';
+      if (name.includes('REISE') || name.includes('KREUZFAHRT')) return '✈️';
+      if (name.includes('HAUS')) return '🏠';
+      if (name.includes('MOTORRAD') || name.includes('ROLLER') || name.includes('BIKE')) return '🏍️';
+      if (name.includes('TECHNIK') || name.includes('LAPTOP')) return '💻';
+      return '🎁';
+  };
+
   return (
     <div className="grid grid-cols-3 gap-2 md:gap-4 w-full max-w-4xl mx-auto mt-4">
       {players.map((player) => {
@@ -41,17 +51,18 @@ const PlayerScoreboard: React.FC<PlayerScoreboardProps> = ({ players, activePlay
             </div>
             
             {/* Inventory & Status Icons */}
-            <div className="absolute -bottom-2 flex gap-1">
+            <div className="absolute -bottom-2 flex gap-1 flex-wrap justify-center">
                 {player.hasExtraSpin && (
                     <div className="bg-purple-600 text-white text-[10px] px-2 py-0.5 rounded-full border border-purple-400 animate-bounce">
                         EXTRA
                     </div>
                 )}
-                {player.inventory.length > 0 && (
-                    <div className="bg-pink-600 text-white text-[10px] px-2 py-0.5 rounded-full border border-pink-400">
-                        {player.inventory.map(i => i === 'GIFT' ? '🎁' : i).join('')}
+                {player.inventory.length > 0 && player.inventory.map((item, idx) => (
+                    <div key={idx} className="bg-pink-600 text-white text-[10px] px-2 py-0.5 rounded-full border border-pink-400 flex items-center gap-1" title={item}>
+                        <span>{getGiftIcon(item)}</span>
+                        <span className="hidden md:inline">{item}</span>
                     </div>
-                )}
+                ))}
             </div>
           </div>
         );

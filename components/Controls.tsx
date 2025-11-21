@@ -21,7 +21,10 @@ interface ControlsProps {
   onExtraSpinDecision: (use: boolean) => void;
   onConfigStart: (config: GameConfig, p1Avatar: string, p2Avatar: string, p3Avatar: string) => void;
   onMysteryDecision: (reveal: boolean) => void;
-  onTossUpBuzz: () => void;
+  onRiskDecision: (risk: boolean) => void;
+  onTossUpBuzz: (playerIndex: number) => void;
+  gameConfig: GameConfig;
+  jackpotValue: number;
 }
 
 const Controls: React.FC<ControlsProps> = ({
@@ -43,7 +46,10 @@ const Controls: React.FC<ControlsProps> = ({
   onExtraSpinDecision,
   onConfigStart,
   onMysteryDecision,
-  onTossUpBuzz
+  onRiskDecision,
+  onTossUpBuzz,
+  gameConfig,
+  jackpotValue
 }) => {
   const [solveInput, setSolveInput] = useState('');
   
@@ -56,7 +62,8 @@ const Controls: React.FC<ControlsProps> = ({
       enableFreePlay: false,
       enableTTS: false,
       enableAvatars: false,
-      categoryTheme: 'ALL'
+      categoryTheme: 'ALL',
+      riskMode: 0
   });
   
   // Avatar Selection
@@ -91,6 +98,17 @@ const Controls: React.FC<ControlsProps> = ({
                       </div>
 
                       <div className="mb-4">
+                          <label className="block text-white font-bold mb-2">Risiko Feld (50/50):</label>
+                          <div className="flex flex-wrap gap-2">
+                              <button onClick={() => setConfig({...config, riskMode: 0})} className={`px-3 py-1 rounded ${config.riskMode === 0 ? 'bg-green-600' : 'bg-gray-600'}`}>Aus</button>
+                              <button onClick={() => setConfig({...config, riskMode: 1})} className={`px-3 py-1 rounded ${config.riskMode === 1 ? 'bg-orange-600' : 'bg-gray-600'}`}>Runde 1</button>
+                              <button onClick={() => setConfig({...config, riskMode: 2})} className={`px-3 py-1 rounded ${config.riskMode === 2 ? 'bg-orange-600' : 'bg-gray-600'}`}>Runde 2</button>
+                              <button onClick={() => setConfig({...config, riskMode: 3})} className={`px-3 py-1 rounded ${config.riskMode === 3 ? 'bg-orange-600' : 'bg-gray-600'}`}>Runde 3</button>
+                              <button onClick={() => setConfig({...config, riskMode: 4})} className={`px-3 py-1 rounded ${config.riskMode === 4 ? 'bg-orange-600 border border-yellow-400' : 'bg-gray-600'}`}>Alle</button>
+                          </div>
+                      </div>
+
+                      <div className="mb-4">
                           <label className="block text-white font-bold mb-2">Kategorie Thema:</label>
                           <select 
                             value={config.categoryTheme} 
@@ -98,10 +116,25 @@ const Controls: React.FC<ControlsProps> = ({
                             className="bg-gray-700 text-white p-2 rounded w-full"
                           >
                               <option value="ALL">Alles (Gemischt)</option>
-                              <option value="80s">80er Jahre Spezial</option>
+                              <option value="TV">TV & Fernsehen</option>
+                              <option value="RETRO_TV">Retro TV (Kult)</option>
+                              <option value="MOVIES">Kino & Filme</option>
+                              <option value="MUSIC">Musik & Hits</option>
+                              <option value="RETRO">Retro & Nostalgie</option>
+                              <option value="50S">50er Jahre</option>
+                              <option value="60S">60er Jahre</option>
+                              <option value="70S">70er Jahre</option>
+                              <option value="80s">80er Jahre</option>
+                              <option value="90S">90er Jahre</option>
+                              <option value="2000S">2000er Jahre</option>
+                              <option value="GDR">DDR Spezial</option>
+                              <option value="POLITICS">Politik & Geschichte</option>
+                              <option value="HEADLINES">Schlagzeilen</option>
+                              <option value="JOB">Beruf & Arbeit</option>
+                              <option value="IDIOM">Redewendungen</option>
+                              <option value="PERSON">Personen</option>
                               <option value="KIDS">Kinder Edition</option>
                               <option value="GEO">Geografie & Reisen</option>
-                              <option value="MOVIES">Kino & Stars</option>
                           </select>
                       </div>
                   </div>
@@ -111,14 +144,6 @@ const Controls: React.FC<ControlsProps> = ({
                       <h3 className="text-xl text-yellow-400 font-bold mb-4 border-b border-gray-600 pb-2">EXTRAS & OPTIONEN</h3>
                       
                       <div className="grid grid-cols-1 gap-3">
-                          <label className="flex items-center gap-3 cursor-pointer hover:bg-white/5 p-2 rounded">
-                              <input type="checkbox" checked={config.enableTossUp} onChange={(e) => setConfig({...config, enableTossUp: e.target.checked})} className="w-6 h-6 accent-green-500"/>
-                              <div>
-                                  <div className="font-bold text-white">Schnellraterunde (Toss-Up)</div>
-                                  <div className="text-xs text-gray-300">Startet vor Runde 1. Wer buzzert, gewinnt 1000 DM.</div>
-                              </div>
-                          </label>
-
                           <label className="flex items-center gap-3 cursor-pointer hover:bg-white/5 p-2 rounded">
                               <input type="checkbox" checked={config.enableJackpot} onChange={(e) => setConfig({...config, enableJackpot: e.target.checked})} className="w-6 h-6 accent-green-500"/>
                               <div>
@@ -132,14 +157,6 @@ const Controls: React.FC<ControlsProps> = ({
                               <div>
                                   <div className="font-bold text-white">Sachpreise (Geschenke)</div>
                                   <div className="text-xs text-gray-300">Sammelbare 'Geschenk'-Felder auf dem Rad.</div>
-                              </div>
-                          </label>
-
-                          <label className="flex items-center gap-3 cursor-pointer hover:bg-white/5 p-2 rounded">
-                              <input type="checkbox" checked={config.enableFreePlay} onChange={(e) => setConfig({...config, enableFreePlay: e.target.checked})} className="w-6 h-6 accent-green-500"/>
-                              <div>
-                                  <div className="font-bold text-white">Freispiel (Free Play)</div>
-                                  <div className="text-xs text-gray-300">Raten ohne Risiko (auch Vokale kostenlos).</div>
                               </div>
                           </label>
 
@@ -202,12 +219,26 @@ const Controls: React.FC<ControlsProps> = ({
               <h2 className="text-4xl font-display text-white mb-2 animate-pulse">SCHNELLRATERUNDE</h2>
               <p className="text-xl text-yellow-300 mb-8">Drücke den Buzzer, wenn du die Lösung weißt!</p>
               
-              <button 
-                 onClick={onTossUpBuzz}
-                 className="w-48 h-48 rounded-full bg-red-600 border-8 border-red-800 shadow-[0_10px_0_rgb(153,27,27)] active:shadow-none active:translate-y-2 text-white text-3xl font-bold hover:bg-red-500 transition-all mx-auto flex items-center justify-center"
-              >
-                  BUZZER
-              </button>
+              <div className="flex justify-center gap-6">
+                  <button 
+                     onClick={() => onTossUpBuzz(0)}
+                     className="w-32 h-32 rounded-full bg-red-600 border-8 border-red-800 shadow-[0_10px_0_rgb(153,27,27)] active:shadow-none active:translate-y-2 text-white text-xl font-bold hover:bg-red-500 transition-all flex items-center justify-center"
+                  >
+                      Spieler 1
+                  </button>
+                  <button 
+                     onClick={() => onTossUpBuzz(1)}
+                     className="w-32 h-32 rounded-full bg-yellow-500 border-8 border-yellow-700 shadow-[0_10px_0_rgb(161,98,7)] active:shadow-none active:translate-y-2 text-black text-xl font-bold hover:bg-yellow-400 transition-all flex items-center justify-center"
+                  >
+                      Spieler 2
+                  </button>
+                  <button 
+                     onClick={() => onTossUpBuzz(2)}
+                     className="w-32 h-32 rounded-full bg-blue-600 border-8 border-blue-800 shadow-[0_10px_0_rgb(30,64,175)] active:shadow-none active:translate-y-2 text-white text-xl font-bold hover:bg-blue-500 transition-all flex items-center justify-center"
+                  >
+                      Spieler 3
+                  </button>
+              </div>
           </div>
       )
   }
@@ -259,6 +290,38 @@ const Controls: React.FC<ControlsProps> = ({
                >
                    1.000 DM NEHMEN
                    <div className="text-sm font-normal mt-1 text-gray-300">Sicher</div>
+               </button>
+           </div>
+        </div>
+    );
+  }
+
+  // Risk Decision
+  if (gameState === GameState.RISK_DECISION) {
+    return (
+        <div className="w-full max-w-4xl mx-auto mt-6 p-6 bg-orange-900/90 rounded-xl backdrop-blur-sm border-2 border-orange-500 text-center shadow-2xl animate-fade-in">
+           <h2 className="text-4xl font-display text-white mb-2 drop-shadow-lg">RISIKO FELD!</h2>
+           <p className="text-xl text-gray-200 mb-8 max-w-lg mx-auto">
+               Setze deinen gesamten Runden-Gewinn ({currentMoney} DM) aufs Spiel!
+               <br/><br/>
+               <span className="text-yellow-400">Richtig:</span> Verdoppeln
+               <br/>
+               <span className="text-red-400">Falsch:</span> Alles verlieren
+           </p>
+           <div className="flex flex-wrap justify-center gap-6">
+               <button 
+                 onClick={() => onRiskDecision(true)} 
+                 className="bg-gradient-to-b from-orange-600 to-orange-800 hover:from-orange-500 hover:to-orange-700 text-white font-bold py-6 px-12 rounded-xl shadow-[0_0_20px_rgba(249,115,22,0.6)] active:scale-95 transition-all text-2xl border-2 border-white"
+               >
+                   RISIKO EINGEHEN
+                   <div className="text-sm font-normal mt-1 text-yellow-200">Alles oder Nichts!</div>
+               </button>
+               <button 
+                 onClick={() => onRiskDecision(false)} 
+                 className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-6 px-12 rounded-xl shadow-lg active:scale-95 transition-all text-2xl border border-gray-500"
+               >
+                   500 DM (SICHER)
+                   <div className="text-sm font-normal mt-1 text-gray-300">Kein Risiko</div>
                </button>
            </div>
         </div>
@@ -348,6 +411,14 @@ const Controls: React.FC<ControlsProps> = ({
       <div className="absolute -top-5 left-1/2 transform -translate-x-1/2 bg-yellow-500 text-black px-8 py-1 rounded-full font-bold uppercase tracking-widest shadow-lg border-2 border-white">
           {activePlayerName}
       </div>
+
+      {/* Jackpot Display */}
+      {gameConfig.enableJackpot && (
+          <div className="absolute -top-14 right-0 md:-right-12 bg-red-800 border-4 border-yellow-400 rounded-lg p-2 shadow-[0_0_15px_rgba(220,38,38,0.6)] animate-pulse z-10">
+              <div className="text-xs text-yellow-200 uppercase font-bold tracking-widest text-center">Jackpot</div>
+              <div className="text-2xl font-display text-white">{jackpotValue}</div>
+          </div>
+      )}
 
       <div className="mt-6 text-center">
             <p className="text-gray-200 text-lg mb-4 font-medium">
