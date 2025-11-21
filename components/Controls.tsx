@@ -41,7 +41,7 @@ const Controls: React.FC<ControlsProps> = ({
   guessedLetters,
   spinDisabled,
   bonusRoundSelection,
-  onBonusSelect,
+  onBonusSelect: onBonusSelect,
   onBonusSubmit,
   onExtraSpinDecision,
   onConfigStart,
@@ -94,6 +94,7 @@ const Controls: React.FC<ControlsProps> = ({
                               <button onClick={() => setConfig({...config, mysteryRound: 2})} className={`px-3 py-1 rounded ${config.mysteryRound === 2 ? 'bg-purple-600' : 'bg-gray-600'}`}>Runde 2</button>
                               <button onClick={() => setConfig({...config, mysteryRound: 3})} className={`px-3 py-1 rounded ${config.mysteryRound === 3 ? 'bg-purple-600' : 'bg-gray-600'}`}>Runde 3</button>
                               <button onClick={() => setConfig({...config, mysteryRound: 4})} className={`px-3 py-1 rounded ${config.mysteryRound === 4 ? 'bg-purple-600 border border-yellow-400' : 'bg-gray-600'}`}>Extra (4.)</button>
+                              <button onClick={() => setConfig({...config, mysteryRound: 5})} className={`px-3 py-1 rounded ${config.mysteryRound === 5 ? 'bg-purple-600 border-2 border-yellow-400 font-bold' : 'bg-gray-600'}`}>Jede</button>
                           </div>
                       </div>
 
@@ -106,36 +107,6 @@ const Controls: React.FC<ControlsProps> = ({
                               <button onClick={() => setConfig({...config, riskMode: 3})} className={`px-3 py-1 rounded ${config.riskMode === 3 ? 'bg-orange-600' : 'bg-gray-600'}`}>Runde 3</button>
                               <button onClick={() => setConfig({...config, riskMode: 4})} className={`px-3 py-1 rounded ${config.riskMode === 4 ? 'bg-orange-600 border border-yellow-400' : 'bg-gray-600'}`}>Alle</button>
                           </div>
-                      </div>
-
-                      <div className="mb-4">
-                          <label className="block text-white font-bold mb-2">Kategorie Thema:</label>
-                          <select 
-                            value={config.categoryTheme} 
-                            onChange={(e) => setConfig({...config, categoryTheme: e.target.value})}
-                            className="bg-gray-700 text-white p-2 rounded w-full"
-                          >
-                              <option value="ALL">Alles (Gemischt)</option>
-                              <option value="TV">TV & Fernsehen</option>
-                              <option value="RETRO_TV">Retro TV (Kult)</option>
-                              <option value="MOVIES">Kino & Filme</option>
-                              <option value="MUSIC">Musik & Hits</option>
-                              <option value="RETRO">Retro & Nostalgie</option>
-                              <option value="50S">50er Jahre</option>
-                              <option value="60S">60er Jahre</option>
-                              <option value="70S">70er Jahre</option>
-                              <option value="80s">80er Jahre</option>
-                              <option value="90S">90er Jahre</option>
-                              <option value="2000S">2000er Jahre</option>
-                              <option value="GDR">DDR Spezial</option>
-                              <option value="POLITICS">Politik & Geschichte</option>
-                              <option value="HEADLINES">Schlagzeilen</option>
-                              <option value="JOB">Beruf & Arbeit</option>
-                              <option value="IDIOM">Redewendungen</option>
-                              <option value="PERSON">Personen</option>
-                              <option value="KIDS">Kinder Edition</option>
-                              <option value="GEO">Geografie & Reisen</option>
-                          </select>
                       </div>
                   </div>
 

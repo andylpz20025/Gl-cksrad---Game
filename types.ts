@@ -37,7 +37,7 @@ export interface Puzzle {
 }
 
 export interface GameConfig {
-  mysteryRound: number; // 0=None, 1-3=Round, 4=Extra
+  mysteryRound: number; // 0=None, 1-3=Round, 4=Extra, 5=All Rounds
   enableTossUp: boolean;
   enableJackpot: boolean;
   enableGiftTags: boolean;

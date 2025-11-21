@@ -130,7 +130,7 @@ function App() {
               }
               
               // Reveal a random unrevealed letter
-              const charToReveal = uniqueLetters[revealStep];
+              const charToReveal = uniqueLetters[revealStep] as string;
               setGuessedLetters(prev => new Set(prev).add(charToReveal));
               soundService.playReveal();
               revealStep++;
@@ -268,7 +268,7 @@ function App() {
 
   const hasUnrevealedConsonants = useCallback(() => {
     if (!puzzle) return true;
-    const puzzleChars = new Set(puzzle.text.replace(/[^A-ZÄÖÜß]/g, '').split(''));
+    const puzzleChars = new Set<string>(puzzle.text.replace(/[^A-ZÄÖÜß]/g, '').split(''));
     for (let char of puzzleChars) {
         if (!VOWELS.includes(char) && !guessedLetters.has(char)) {
             return true;
@@ -279,7 +279,7 @@ function App() {
 
   const hasUnrevealedVowels = useCallback(() => {
     if (!puzzle) return true;
-    const puzzleChars = new Set(puzzle.text.replace(/[^A-ZÄÖÜß]/g, '').split(''));
+    const puzzleChars = new Set<string>(puzzle.text.replace(/[^A-ZÄÖÜß]/g, '').split(''));
     for (let char of puzzleChars) {
         if (VOWELS.includes(char) && !guessedLetters.has(char)) {
             return true;
@@ -643,7 +643,8 @@ function App() {
       // The prize is 1000 DM Startkapital for Round 1.
       // We do NOT bank it immediately into totalScore, because it is 'Startkapital' (at risk in Round 1).
       
-      const allChars = new Set(puzzle?.text.replace(/ /g, '').split(''));
+      const text = puzzle ? puzzle.text : '';
+      const allChars = new Set<string>(text.replace(/ /g, '').split(''));
       setGuessedLetters(allChars);
       
       setTimeout(() => {
@@ -666,7 +667,8 @@ function App() {
     });
     
     setMessage(`Runde vorbei! ${players[winnerIndex].name} gewinnt ${winAmount} DM.`);
-    const allChars = new Set(puzzle?.text.replace(/ /g, '').split(''));
+    const text = puzzle ? puzzle.text : '';
+    const allChars = new Set<string>(text.replace(/ /g, '').split(''));
     setGuessedLetters(allChars);
     
     const totalRounds = gameConfig.mysteryRound === 4 ? 4 : 3;

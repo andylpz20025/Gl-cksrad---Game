@@ -119,7 +119,7 @@ function App() {
           setGameState(GameState.TOSS_UP);
           
           // Start auto-reveal
-          const allLetters = (newPuzzle.text as string).replace(/[^A-ZÄÖÜß]/g, '').split('');
+          const allLetters = newPuzzle.text.replace(/[^A-ZÄÖÜß]/g, '').split('');
           const uniqueLetters = Array.from(new Set(allLetters));
           
           let revealStep = 0;
@@ -137,7 +137,7 @@ function App() {
           }, 1200); 
           setTossUpInterval(interval);
 
-      } catch (e: unknown) {
+      } catch (e: any) {
           const errorMessage = e instanceof Error ? e.message : String(e);
           console.error(errorMessage);
           startRound(1, 0, config);
@@ -154,7 +154,7 @@ function App() {
   const startRound = async (roundNum: number, startPlayerIndex: number, config: GameConfig, starterCapital: number = 0) => {
     setGameState(GameState.SETUP);
     
-    const isMystery = roundNum === config.mysteryRound;
+    const isMystery = config.mysteryRound === 5 || roundNum === config.mysteryRound;
     setMessage(isMystery ? `MYSTERY RUNDE ${roundNum}!` : `Runde ${roundNum} wird generiert...`);
     
     setPlayers(prev => prev.map((p, idx) => ({ 
@@ -181,7 +181,7 @@ function App() {
       setUsedCategories(prev => [...prev, newPuzzle.category]);
       setGameState(GameState.ROUND_START);
       setTimeout(() => setGameState(GameState.SPIN_OR_SOLVE), 2500);
-    } catch (e: unknown) {
+    } catch (e: any) {
       const errorMessage = e instanceof Error ? e.message : String(e);
       console.error("Failed to start round", errorMessage);
     }
@@ -391,7 +391,9 @@ function App() {
          currentSegments[4] = { text: 'RISIKO', value: 0, type: SegmentType.RISK, color: '#000000', textColor: '#F97316' };
     }
 
-    if (currentRound === gameConfig.mysteryRound) {
+    const isMystery = gameConfig.mysteryRound === 5 || currentRound === gameConfig.mysteryRound;
+
+    if (isMystery) {
         if (!mysteryRevealed) {
             currentSegments[6] = { text: '?', value: 0, type: SegmentType.MYSTERY, color: '#7E22CE', textColor: '#fff' };
             currentSegments[17] = { text: '?', value: 0, type: SegmentType.MYSTERY, color: '#7E22CE', textColor: '#fff' };
@@ -708,7 +710,7 @@ function App() {
           setGuessedLetters(initialLetters);
 
           setGameState(GameState.BONUS_WHEEL_SPIN);
-      } catch (e: unknown) {
+      } catch (e: any) {
           const errorMessage = e instanceof Error ? e.message : String(e);
           console.error(errorMessage);
       }
@@ -781,7 +783,7 @@ function App() {
                         activePlayerIndex={activePlayerIndex}
                         currentRound={currentRound}
                         isBonusWheelMode={false}
-                        isMysteryRound={currentRound === gameConfig.mysteryRound && gameConfig.mysteryRound !== 0}
+                        isMysteryRound={gameConfig.mysteryRound === 5 || (currentRound === gameConfig.mysteryRound && gameConfig.mysteryRound !== 0)}
                         mysteryRevealed={mysteryRevealed}
                         config={gameConfig}
                         jackpotValue={jackpotValue}
