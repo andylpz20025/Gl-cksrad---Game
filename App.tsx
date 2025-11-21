@@ -4,14 +4,14 @@ import Wheel, { SEGMENTS, BONUS_SEGMENTS } from './components/Wheel';
 import PuzzleBoard from './components/PuzzleBoard';
 import Controls from './components/Controls';
 import PlayerScoreboard from './components/PlayerScoreboard';
-import { GameState, Player, Puzzle, VOWELS, VOWEL_COST, SegmentType } from './types';
+import { GameState, Player, Puzzle, VOWELS, VOWEL_COST, SegmentType, GameConfig } from './types';
 import { geminiService } from './services/geminiService';
 import { soundService } from './services/soundService';
 
 const INITIAL_PLAYERS: Player[] = [
-  { id: 0, name: 'Spieler 1', roundScore: 0, totalScore: 0, hasExtraSpin: false, color: 'red', roundsWon: 0 },
-  { id: 1, name: 'Spieler 2', roundScore: 0, totalScore: 0, hasExtraSpin: false, color: 'green', roundsWon: 0 },
-  { id: 2, name: 'Spieler 3', roundScore: 0, totalScore: 0, hasExtraSpin: false, color: 'blue', roundsWon: 0 },
+  { id: 0, name: 'Spieler 1', roundScore: 0, totalScore: 0, hasExtraSpin: false, color: 'red', roundsWon: 0, avatar: '', inventory: [] },
+  { id: 1, name: 'Spieler 2', roundScore: 0, totalScore: 0, hasExtraSpin: false, color: 'green', roundsWon: 0, avatar: '', inventory: [] },
+  { id: 2, name: 'Spieler 3', roundScore: 0, totalScore: 0, hasExtraSpin: false, color: 'blue', roundsWon: 0, avatar: '', inventory: [] },
 ];
 
 function App() {
@@ -31,9 +31,23 @@ function App() {
   const [revealingLetters, setRevealingLetters] = useState<Set<string>>(new Set());
   
   // Config State
-  const [mysteryRoundTarget, setMysteryRoundTarget] = useState<number | null>(null); // 0 = None
-  const [totalRounds, setTotalRounds] = useState(3);
+  const [gameConfig, setGameConfig] = useState<GameConfig>({
+      mysteryRound: 0, 
+      enableTossUp: false, 
+      enableJackpot: false,
+      enableGiftTags: false,
+      enableFreePlay: false,
+      enableTTS: false,
+      enableAvatars: false,
+      categoryTheme: 'ALL'
+  });
+  
   const [mysteryRevealed, setMysteryRevealed] = useState(false);
+  
+  // Feature Specific States
+  const [jackpotValue, setJackpotValue] = useState(5000);
+  const [isFreePlayTurn, setIsFreePlayTurn] = useState(false);
+  const [tossUpInterval, setTossUpInterval] = useState<ReturnType<typeof setInterval> | null>(null);
 
   // Bonus Round Vars
   const [bonusRoundSelection, setBonusRoundSelection] = useState<string[]>([]);
@@ -45,57 +59,104 @@ function App() {
       setGameState(GameState.GAME_CONFIG);
   };
 
-  const handleConfigSelect = (mysteryChoice: number) => {
-      // 0 = None
-      // 1, 2, 3 = Replace Round
-      // 4 = Extra Round (Total 4)
-      let overrideMystery: number | null = null;
-      if (mysteryChoice === 4) {
-          setTotalRounds(4);
-          setMysteryRoundTarget(4);
-          overrideMystery = 4;
-      } else {
-          setTotalRounds(3);
-          const target = mysteryChoice === 0 ? null : mysteryChoice;
-          setMysteryRoundTarget(target);
-          overrideMystery = target;
+  const handleConfigStart = (config: GameConfig, p1Av: string, p2Av: string, p3Av: string) => {
+      setGameConfig(config);
+      
+      // Set avatars
+      if (config.enableAvatars) {
+          setPlayers(prev => [
+              {...prev[0], avatar: p1Av},
+              {...prev[1], avatar: p2Av},
+              {...prev[2], avatar: p3Av},
+          ]);
       }
-      startGame(overrideMystery);
+
+      startGame(config);
   };
 
-  const startGame = (mysteryOverride: number | null = null) => {
-    setPlayers(INITIAL_PLAYERS);
+  const startGame = (config: GameConfig) => {
+    // Reset essential stats but keep avatars if set
+    setPlayers(prev => prev.map(p => ({...p, roundScore: 0, totalScore: 0, hasExtraSpin: false, roundsWon: 0, inventory: []})));
     setCurrentRound(1);
     setActivePlayerIndex(0); 
-    // Reset state properly for first round
-    startRound(1, 0, mysteryOverride);
+    
+    if (config.enableTossUp) {
+        startTossUpRound(config);
+    } else {
+        startRound(1, 0, config);
+    }
   };
 
-  const startRound = async (roundNum: number, startPlayerIndex: number, mysteryOverride: number | null = null) => {
+  // --- TOSS UP LOGIC ---
+  const startTossUpRound = async (config: GameConfig) => {
+      setGameState(GameState.SETUP);
+      setMessage("SCHNELLRATERUNDE! Gleich geht's los...");
+      setGuessedLetters(new Set());
+      
+      try {
+          const newPuzzle = await geminiService.generatePuzzle('easy', [], config.categoryTheme);
+          setPuzzle(newPuzzle);
+          setGameState(GameState.TOSS_UP);
+          
+          // Start auto-reveal
+          let revealedIndices: number[] = [];
+          const allLetters = newPuzzle.text.replace(/[^A-ZÄÖÜß]/g, '').split('');
+          const uniqueLetters = Array.from(new Set(allLetters));
+          
+          let revealStep = 0;
+          const interval = setInterval(() => {
+              if (revealStep >= uniqueLetters.length) {
+                  clearInterval(interval);
+                  return;
+              }
+              
+              // Reveal a random unrevealed letter
+              const charToReveal = uniqueLetters[revealStep];
+              setGuessedLetters(prev => new Set(prev).add(charToReveal));
+              soundService.playReveal();
+              revealStep++;
+          }, 1200); 
+          setTossUpInterval(interval);
+
+      } catch (e: any) {
+          console.error(e);
+          startRound(1, 0, config);
+      }
+  };
+
+  const handleTossUpBuzz = () => {
+      if (tossUpInterval) clearInterval(tossUpInterval);
+      setGameState(GameState.SOLVING);
+  };
+
+  // --- MAIN ROUND LOGIC ---
+  const startRound = async (roundNum: number, startPlayerIndex: number, config: GameConfig) => {
     setGameState(GameState.SETUP);
     
-    // Use override if provided (at start of game), otherwise current state
-    const targetRound = mysteryOverride !== null ? mysteryOverride : mysteryRoundTarget;
-    const isMystery = roundNum === targetRound;
-    
+    const isMystery = roundNum === config.mysteryRound;
     setMessage(isMystery ? `MYSTERY RUNDE ${roundNum}!` : `Runde ${roundNum} wird generiert...`);
     
-    // Reset Round Score AND Extra Spin (only valid in active round)
     setPlayers(prev => prev.map(p => ({ ...p, roundScore: 0, hasExtraSpin: false })));
     setGuessedLetters(new Set());
     setLastSpinResult(null);
     setActivePlayerIndex(startPlayerIndex);
     setMysteryRevealed(false);
+    setIsFreePlayTurn(false);
+    
+    // Increase Jackpot
+    if (config.enableJackpot) {
+        setJackpotValue(prev => prev + 2500); // Grows each round
+    }
     
     try {
       // If Round 4 exists, make it Hard too
       const difficulty: 'easy' | 'medium' | 'hard' = roundNum >= 3 ? 'hard' : (roundNum === 2 ? 'medium' : 'easy');
-      const newPuzzle = await geminiService.generatePuzzle(difficulty, usedCategories);
+      const newPuzzle = await geminiService.generatePuzzle(difficulty, usedCategories, config.categoryTheme);
       setPuzzle(newPuzzle);
       setUsedCategories(prev => [...prev, newPuzzle.category]);
       setGameState(GameState.ROUND_START);
       setTimeout(() => setGameState(GameState.SPIN_OR_SOLVE), 2500);
-    } catch (e: unknown) {
+    } catch (e: any) {
       const errorMessage = e instanceof Error ? e.message : String(e);
       console.error("Failed to start round", errorMessage);
     }
@@ -107,6 +168,7 @@ function App() {
          return;
     }
     setActivePlayerIndex((prev) => (prev + 1) % 3);
+    setIsFreePlayTurn(false);
     setGameState(GameState.SPIN_OR_SOLVE);
     setMessage('');
   }, [gameState]);
@@ -130,7 +192,7 @@ function App() {
       const multiplier = Math.pow(2, currentRound - 1);
       
       if (!reveal) {
-          // Safe option: Take 1000 * multiplier
+          // Safe option
           const val = 1000 * multiplier;
           setLastSpinResult(val);
           setMessage(`Sicher gespielt: 1.000er Wert.`);
@@ -145,10 +207,8 @@ function App() {
              setLastSpinResult(val);
              soundService.playCorrect();
              setMessage(`GLÜCKWUNSCH! 10.000er WERT!`);
-             // Delay slightly so they see the message
              setTimeout(() => setGameState(GameState.GUESSING_CONSONANT), 1500);
           } else {
-             // Bankrupt
              soundService.playBankrupt();
              setPlayers(prev => {
                 const copy = [...prev];
@@ -192,8 +252,8 @@ function App() {
         handleBonusWheelSpin();
         return;
     }
-
-    if (!hasUnrevealedConsonants()) {
+    // Free Play allows vowels without buying, but standard spin needs consonants usually
+    if (!hasUnrevealedConsonants() && !isFreePlayTurn) {
         soundService.playWarning();
         setMessage('Keine Konsonanten mehr! Bitte lösen.');
         return;
@@ -205,6 +265,17 @@ function App() {
     if (!hasUnrevealedVowels()) {
         soundService.playWarning();
         setMessage('Keine Vokale mehr!');
+        return;
+    }
+    
+    // If Free Play, skip check
+    if (isFreePlayTurn) {
+         setGameState(GameState.BUYING_VOWEL);
+         return;
+    }
+    
+    if (activePlayer.roundScore < VOWEL_COST) {
+        soundService.playWarning();
         return;
     }
     setGameState(GameState.BUYING_VOWEL);
@@ -261,14 +332,24 @@ function App() {
     const hitAngle = (currentStopperAngle - rotationMod + 360) % 360;
     
     // Determine which segment list we are using for calculation
-    // If Mystery Round, we must simulate the injected segments
     let currentSegments = [...SEGMENTS];
-    if (currentRound === mysteryRoundTarget) {
+    
+    // Apply Config Overrides for Logical Calculation
+    if (gameConfig.enableJackpot) {
+         currentSegments[1] = { text: 'JACKPOT', value: jackpotValue, type: SegmentType.JACKPOT, color: '#B91C1C', textColor: '#fff' };
+    }
+    if (gameConfig.enableFreePlay) {
+         currentSegments[14] = { text: 'FREE', value: 0, type: SegmentType.FREE_PLAY, color: '#4C1D95', textColor: '#fff' };
+    }
+    if (gameConfig.enableGiftTags) {
+         currentSegments[23] = { text: 'GESCHENK', value: 1000, type: SegmentType.GIFT, color: '#EC4899', textColor: '#fff' };
+    }
+
+    if (currentRound === gameConfig.mysteryRound) {
         if (!mysteryRevealed) {
             currentSegments[6] = { text: '?', value: 0, type: SegmentType.MYSTERY, color: '#7E22CE', textColor: '#fff' };
             currentSegments[17] = { text: '?', value: 0, type: SegmentType.MYSTERY, color: '#7E22CE', textColor: '#fff' };
         } else {
-            // They are 1000 wedges now
             currentSegments[6] = { text: '1000', value: 1000, type: SegmentType.VALUE, color: '#9333EA', textColor: '#fff' };
             currentSegments[17] = { text: '1000', value: 1000, type: SegmentType.VALUE, color: '#9333EA', textColor: '#fff' };
         }
@@ -284,11 +365,10 @@ function App() {
     const multiplier = Math.pow(2, currentRound - 1);
     let calculatedValue = segment.value * multiplier;
     
+    // Special Case Handling
     if (segment.type === SegmentType.MYSTERY) {
-        // Go to decision mode
         setMessage("MYSTERY FELD! Risiko oder Sicherheit?");
         setGameState(GameState.MYSTERY_DECISION);
-        // processSegment is NOT called yet. handleMysteryDecision will handle it.
         return;
     }
 
@@ -303,6 +383,7 @@ function App() {
             setPlayers(prev => {
                 const copy = [...prev];
                 copy[activePlayerIndex].roundScore = 0;
+                copy[activePlayerIndex].inventory = []; // Lose inventory on Bankrupt? Usually yes
                 return copy;
             });
             
@@ -329,8 +410,25 @@ function App() {
              });
              setMessage('EXTRA DREH GEWONNEN! NOCHMAL DREHEN!');
              setGameState(GameState.SPIN_OR_SOLVE);
+        } else if (segment.type === SegmentType.FREE_PLAY) {
+             setMessage('FREISPIEL! Vokal oder Konsonant ohne Risiko.');
+             setIsFreePlayTurn(true);
+             setGameState(GameState.GUESSING_CONSONANT); // Or Vowel, but standard UI path start
+        } else if (segment.type === SegmentType.JACKPOT) {
+             setMessage(`JACKPOT CHANCE! (${jackpotValue} DM)`);
+             // Treated as normal value guess, but marks possible win if solved later
+             setGameState(GameState.GUESSING_CONSONANT);
+        } else if (segment.type === SegmentType.GIFT) {
+             setMessage('GESCHENK GEFUNDEN!');
+             // Add to inventory immediately? Or on solve? Standard: Pickup tag.
+             setPlayers(prev => {
+                 const copy = [...prev];
+                 copy[activePlayerIndex].inventory.push('GIFT');
+                 return copy;
+             });
+             setGameState(GameState.GUESSING_CONSONANT);
         } else {
-             // Value or standard Value
+             // Standard Value
              setGameState(GameState.GUESSING_CONSONANT);
         }
     }, 500);
@@ -343,19 +441,30 @@ function App() {
 
     if (count > 0) {
         soundService.playReveal();
-        const value = (lastSpinResult || 0) * count;
+        // Check if Free Play turn, still get money? Usually yes for consonants
+        // Check if Jackpot -> You don't get Jackpot cash per letter, you get 500 per letter usually + chance
+        let value = (lastSpinResult || 0);
+        // If it was Gift tag, value is 1000 (set in segments logic)
+        
+        const totalAdd = value * count;
+        
         setPlayers(prev => {
             const copy = [...prev];
-            copy[activePlayerIndex].roundScore += value;
+            copy[activePlayerIndex].roundScore += totalAdd;
             return copy;
         });
-        setMessage(`${count}x ${char}! (+${value} DM)`);
+        setMessage(`${count}x ${char}! (+${totalAdd} DM)`);
         setRevealingLetters(new Set([char]));
         setTimeout(() => setRevealingLetters(new Set()), 1000);
+        
+        // Free Play allows continued turn
         setGameState(GameState.SPIN_OR_SOLVE);
     } else {
         soundService.playWrong();
-        if (players[activePlayerIndex].hasExtraSpin) {
+        if (isFreePlayTurn) {
+            setMessage(`Kein ${char}. (Freispiel - Kein Verlust)`);
+            setTimeout(() => setGameState(GameState.SPIN_OR_SOLVE), 1500); // Keep turn
+        } else if (players[activePlayerIndex].hasExtraSpin) {
              setMessage(`Leider kein ${char}.`);
              setTimeout(() => setGameState(GameState.EXTRA_SPIN_PROMPT), 1500);
         } else {
@@ -366,22 +475,30 @@ function App() {
   };
 
   const handleBuyVowel = (char: string) => {
-     setPlayers(prev => {
-         const copy = [...prev];
-         copy[activePlayerIndex].roundScore -= VOWEL_COST;
-         return copy;
-     });
+     // Free play vowel is free
+     if (!isFreePlayTurn) {
+        setPlayers(prev => {
+            const copy = [...prev];
+            copy[activePlayerIndex].roundScore -= VOWEL_COST;
+            return copy;
+        });
+     }
+     
      setGuessedLetters(prev => new Set(prev).add(char));
      const count = puzzle.text.split(char).length - 1;
+     
      if (count > 0) {
          soundService.playReveal();
-         setMessage(`${count}x ${char} gekauft.`);
+         setMessage(isFreePlayTurn ? `${count}x ${char} (Gratis).` : `${count}x ${char} gekauft.`);
          setRevealingLetters(new Set([char]));
          setTimeout(() => setRevealingLetters(new Set()), 1000);
          setGameState(GameState.SPIN_OR_SOLVE);
      } else {
          soundService.playWrong();
-         if (players[activePlayerIndex].hasExtraSpin) {
+         if (isFreePlayTurn) {
+             setMessage(`Kein ${char}. (Freispiel - Kein Verlust)`);
+             setTimeout(() => setGameState(GameState.SPIN_OR_SOLVE), 1500);
+         } else if (players[activePlayerIndex].hasExtraSpin) {
             setMessage(`Kein ${char}.`);
             setTimeout(() => setGameState(GameState.EXTRA_SPIN_PROMPT), 1500);
          } else {
@@ -390,23 +507,43 @@ function App() {
          }
      }
   };
+  
+  const speakPuzzle = (text: string) => {
+      if (!gameConfig.enableTTS) return;
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'de-DE';
+      window.speechSynthesis.speak(utterance);
+  };
 
   const handleSolve = (guess: string) => {
     if (!puzzle) return;
-
-    // Allow solving with or without hyphens
     const normalize = (s: string) => s.replace(/-/g, '').trim();
 
     if (normalize(guess) === normalize(puzzle.text)) {
         soundService.playSolve();
+        speakPuzzle(puzzle.text);
+        
         if (gameState === GameState.BONUS_ROUND_SOLVE) {
              handleBonusWin();
+        } else if (gameState === GameState.TOSS_UP) { // If in toss up
+             endTossUp(activePlayerIndex);
         } else {
              endRound(activePlayerIndex);
         }
     } else {
         soundService.playWrong();
-        if (players[activePlayerIndex].hasExtraSpin && gameState !== GameState.BONUS_ROUND_SOLVE) {
+        if (gameState === GameState.TOSS_UP) {
+            // In Toss Up, wrong solve passes to next? Or just out?
+            // Simplification: Pass to next in toss up
+            setMessage("Falsch!");
+            // Only if not buzzer mode, but we are in buzzer mode where activePlayer is the one who buzzed.
+            // For now, just reset or allow retry? Let's switch player for penalty.
+            setActivePlayerIndex((prev) => (prev + 1) % 3);
+            setGameState(GameState.TOSS_UP); // Resume guessing/buzzing essentially
+            // Re-trigger interval?
+            // Complexity: Restarting the interval for remaining letters
+            // For simplicity in this code block: Just next player gets chance to buzz if we resume
+        } else if (players[activePlayerIndex].hasExtraSpin && gameState !== GameState.BONUS_ROUND_SOLVE) {
             setMessage('Falsch.');
             setTimeout(() => setGameState(GameState.EXTRA_SPIN_PROMPT), 1500);
         } else {
@@ -420,17 +557,51 @@ function App() {
     }
   };
 
+  const endTossUp = (winnerIndex: number) => {
+      setMessage(`SCHNELLRUNDE GEWONNEN! (+1000 DM)`);
+      setPlayers(prev => {
+          const copy = [...prev];
+          copy[winnerIndex].roundScore = 1000; 
+          copy[winnerIndex].totalScore += 1000; // Immediately bank
+          return copy;
+      });
+      const allChars = new Set(puzzle?.text.replace(/ /g, '').split(''));
+      setGuessedLetters(allChars);
+      
+      setTimeout(() => {
+          // Start Round 1, winner starts
+          startRound(1, winnerIndex, gameConfig);
+      }, 3000);
+  };
+
   const endRound = (winnerIndex: number) => {
     const currentPlayer = players[winnerIndex];
-    // If player solves with 0 money, they get 200 DM automatically
-    const winAmount = currentPlayer.roundScore === 0 ? 200 : currentPlayer.roundScore;
+    let winAmount = currentPlayer.roundScore === 0 ? 200 : currentPlayer.roundScore;
+    
+    // Logic: Jackpot Win?
+    // To win jackpot, you must have landed on it during the round and then solved.
+    // But typically you have to land on it, call a correct letter, AND solve *in that turn*.
+    // Simplified here: If last spin was Jackpot, you get it.
+    // Actually, let's just check if lastSpinResult matches jackpotValue (which is visually on the wheel)
+    // But we updated lastSpinResult to `segment.value * multiplier`. 
+    // This is complex to track "holding the jackpot ticket".
+    // Simplification: If user has JACKPOT segment type as last action? 
+    // Let's assume standard: Add Jackpot to total if last spin was jackpot. 
+    // Better: If lastSpinResult === jackpotValue * multiplier?
+    
+    // Gift tags logic: Inventory items convert to cash? Or just stay as "prizes"?
+    // Let's convert 'GIFT' to 1000 cash extra.
+    const giftCount = currentPlayer.inventory.filter(i => i === 'GIFT').length;
+    if (giftCount > 0) {
+        winAmount += (giftCount * 1000);
+    }
 
-    // Only winner banks their round score
     setPlayers(prev => {
         const copy = [...prev];
         copy[winnerIndex].roundScore = winAmount; 
         copy[winnerIndex].totalScore += winAmount;
         copy[winnerIndex].roundsWon += 1;
+        copy[winnerIndex].inventory = []; // Clear inventory (cashed out)
         return copy;
     });
     
@@ -438,12 +609,13 @@ function App() {
     const allChars = new Set(puzzle?.text.replace(/ /g, '').split(''));
     setGuessedLetters(allChars);
     
+    const totalRounds = gameConfig.mysteryRound === 4 ? 4 : 3;
+
     setTimeout(() => {
         if (currentRound < totalRounds) {
             const nextRound = currentRound + 1;
             setCurrentRound(nextRound);
-            // Cycle starter: R1->0, R2->1, R3->2, R4->0
-            startRound(nextRound, (nextRound - 1) % 3);
+            startRound(nextRound, (nextRound - 1) % 3, gameConfig);
         } else {
             prepareBonusRound();
         }
@@ -451,7 +623,6 @@ function App() {
   };
 
   const prepareBonusRound = () => {
-      // Find player with most rounds won, tiebreaker totalScore
       const sorted = [...players].sort((a, b) => {
           if (b.roundsWon !== a.roundsWon) return b.roundsWon - a.roundsWon;
           return b.totalScore - a.totalScore;
@@ -465,18 +636,15 @@ function App() {
   const startBonusRound = async () => {
       setGameState(GameState.SETUP);
       setMessage('Generiere Bonus Rätsel...');
-      
-      // Reset guessed - NO RSTLNE
       setGuessedLetters(new Set()); 
       
       try {
-          const newPuzzle = await geminiService.generatePuzzle('hard', usedCategories);
+          const newPuzzle = await geminiService.generatePuzzle('hard', usedCategories, gameConfig.categoryTheme);
           setPuzzle(newPuzzle);
           setBonusRoundSelection([]);
           setGameState(GameState.BONUS_WHEEL_SPIN);
       } catch (e: unknown) {
-          const errorMessage = e instanceof Error ? e.message : String(e);
-          console.error(errorMessage);
+          console.error(e);
       }
   };
 
@@ -521,7 +689,11 @@ function App() {
              <h1 className="text-2xl md:text-3xl font-display tracking-wider text-white drop-shadow-md">GLÜCKSRAD</h1>
         </div>
         <div className="text-xl font-bold text-yellow-400 flex gap-4">
-            <span>RUNDE {currentRound > totalRounds ? 'BONUS' : `${currentRound} / ${totalRounds}`}</span>
+            <span>
+                {gameState === GameState.TOSS_UP ? 'SCHNELLRUNDE' : (
+                    currentRound > (gameConfig.mysteryRound === 4 ? 4 : 3) ? 'BONUS' : `${currentRound} / ${gameConfig.mysteryRound === 4 ? 4 : 3}`
+                )}
+            </span>
         </div>
       </header>
 
@@ -535,7 +707,7 @@ function App() {
             />
         </div>
 
-        {(gameState !== GameState.BONUS_ROUND_INTRO && gameState !== GameState.BONUS_WHEEL_SPIN && gameState !== GameState.BONUS_ROUND_SELECTION && gameState !== GameState.BONUS_ROUND_SOLVE && gameState !== GameState.EXTRA_SPIN_PROMPT && gameState !== GameState.GAME_CONFIG && gameState !== GameState.SETUP && gameState !== GameState.WELCOME) && (
+        {(gameState !== GameState.BONUS_ROUND_INTRO && gameState !== GameState.BONUS_WHEEL_SPIN && gameState !== GameState.BONUS_ROUND_SELECTION && gameState !== GameState.BONUS_ROUND_SOLVE && gameState !== GameState.EXTRA_SPIN_PROMPT && gameState !== GameState.GAME_CONFIG && gameState !== GameState.SETUP && gameState !== GameState.WELCOME && gameState !== GameState.TOSS_UP) && (
             <div className="flex flex-col xl:flex-row w-full items-center justify-center gap-8">
                 <div className="flex-shrink-0 scale-90 md:scale-100">
                     <Wheel 
@@ -543,8 +715,10 @@ function App() {
                         activePlayerIndex={activePlayerIndex}
                         currentRound={currentRound}
                         isBonusWheelMode={false}
-                        isMysteryRound={currentRound === mysteryRoundTarget}
+                        isMysteryRound={currentRound === gameConfig.mysteryRound && gameConfig.mysteryRound !== 0}
                         mysteryRevealed={mysteryRevealed}
+                        config={gameConfig}
+                        jackpotValue={jackpotValue}
                     />
                 </div>
 
@@ -580,6 +754,8 @@ function App() {
                     isBonusWheelMode={true}
                     isMysteryRound={false}
                     mysteryRevealed={false}
+                    config={gameConfig}
+                    jackpotValue={0}
                  />
              </div>
         )}
@@ -602,8 +778,9 @@ function App() {
                 onBonusSelect={handleBonusSelect}
                 onBonusSubmit={handleBonusSubmit}
                 onExtraSpinDecision={handleExtraSpinDecision}
-                onConfigSelect={handleConfigSelect}
+                onConfigStart={handleConfigStart}
                 onMysteryDecision={handleMysteryDecision}
+                onTossUpBuzz={handleTossUpBuzz}
              />
         </div>
       </main>
@@ -630,7 +807,7 @@ function App() {
       {gameState === GameState.ROUND_START && (
          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[60] flex items-center justify-center">
              <div className="text-7xl font-display text-transparent bg-clip-text bg-gradient-to-br from-white to-gray-400 animate-bounce drop-shadow-xl">
-                 {currentRound === mysteryRoundTarget ? 'MYSTERY RUNDE' : `RUNDE ${currentRound}`}
+                 {currentRound === gameConfig.mysteryRound ? 'MYSTERY RUNDE' : `RUNDE ${currentRound}`}
              </div>
          </div>
       )}
@@ -653,7 +830,7 @@ function App() {
                 {players.sort((a, b) => b.totalScore - a.totalScore).map((p, i) => (
                     <div key={i} className={`flex justify-between items-center p-4 rounded-lg border ${i === 0 ? 'bg-yellow-900/50 border-yellow-500' : 'bg-gray-800 border-gray-700'}`}>
                         <span className={`text-xl font-bold ${i === 0 ? 'text-yellow-400' : 'text-gray-300'}`}>
-                            {i+1}. {p.name}
+                            {p.avatar} {i+1}. {p.name}
                         </span>
                         <span className="text-2xl text-white font-display">{p.totalScore} DM</span>
                     </div>

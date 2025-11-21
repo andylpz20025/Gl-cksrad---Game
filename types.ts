@@ -5,6 +5,9 @@ export enum SegmentType {
   LOSE_TURN = 'LOSE_TURN',
   EXTRA_SPIN = 'EXTRA_SPIN',
   MYSTERY = 'MYSTERY',
+  JACKPOT = 'JACKPOT',
+  FREE_PLAY = 'FREE_PLAY',
+  GIFT = 'GIFT'
 }
 
 export interface WheelSegment {
@@ -23,6 +26,8 @@ export interface Player {
   hasExtraSpin: boolean;
   color: string;
   roundsWon: number;
+  avatar: string; // Emoji
+  inventory: string[]; // Collected Gift Tags
 }
 
 export interface Puzzle {
@@ -30,10 +35,22 @@ export interface Puzzle {
   text: string;
 }
 
+export interface GameConfig {
+  mysteryRound: number; // 0=None, 1-3=Round, 4=Extra
+  enableTossUp: boolean;
+  enableJackpot: boolean;
+  enableGiftTags: boolean;
+  enableFreePlay: boolean;
+  enableTTS: boolean; // Text to Speech
+  enableAvatars: boolean;
+  categoryTheme: string; // 'ALL', '80s', 'KIDS', etc.
+}
+
 export enum GameState {
   GAME_CONFIG,         // New: Setup options
   WELCOME,             // Start screen
   SETUP,
+  TOSS_UP,             // New: Fast reveal round
   ROUND_START,
   SPIN_OR_SOLVE,
   SPINNING,

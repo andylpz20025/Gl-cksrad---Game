@@ -13,9 +13,9 @@ export class GeminiService {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
-  async generatePuzzle(difficulty: 'easy' | 'medium' | 'hard', usedCategories: string[]): Promise<Puzzle> {
+  async generatePuzzle(difficulty: 'easy' | 'medium' | 'hard', usedCategories: string[], theme: string = 'ALL'): Promise<Puzzle> {
     let attempts = 0;
-    const maxAttempts = 2; // Reduced attempts to fail faster to fallback if quota is issue
+    const maxAttempts = 2; 
 
     while (attempts < maxAttempts) {
       try {
@@ -23,11 +23,16 @@ export class GeminiService {
 
         const model = this.ai.models;
         
-        // German words can be very long. We instruct the model to use hyphens for compound words
-        // so they can break across lines on the 13-column grid.
+        let themePrompt = "";
+        if (theme === '80s') themePrompt = "The puzzle must be related to the 1980s (Music, Movies, Events).";
+        if (theme === 'KIDS') themePrompt = "The puzzle must be suitable for children (Fairy tales, Animals, Simple things).";
+        if (theme === 'GEO') themePrompt = "The puzzle must be related to Geography (Cities, Countries, Landmarks).";
+        if (theme === 'MOVIES') themePrompt = "The puzzle must be a Movie Title or Actor.";
+        
         const prompt = `
           Generate a German word puzzle for a "Wheel of Fortune" style game.
           Difficulty: ${difficulty}.
+          Theme Constraint: ${themePrompt}
           
           Requirements:
           1. Language: German.
@@ -62,7 +67,7 @@ export class GeminiService {
           const data = JSON.parse(response.text);
           return {
             category: data.category.toUpperCase(),
-            text: data.text.toUpperCase().replace(/[^A-ZÄÖÜß \-]/g, '') // Allow hyphen
+            text: data.text.toUpperCase().replace(/[^A-ZÄÖÜß \-]/g, '') 
           };
         }
         
@@ -73,7 +78,7 @@ export class GeminiService {
         
         if (isRateLimit) {
            console.warn("Gemini API Quota Exceeded (429). Using Fallback Library.");
-           break; // Immediately go to fallback
+           break; 
         }
         
         attempts++;
@@ -87,14 +92,12 @@ export class GeminiService {
   }
 
   private getFallbackPuzzle(difficulty: string): Puzzle {
-    // Pre-defined list of safe puzzles that definitely fit the 13-col grid
-    // Long words have hyphens inserted manually where appropriate.
     const fallbacks: Puzzle[] = [
       { category: 'SPRICHWORT', text: 'MORGENSTUND HAT GOLD IM MUND' },
       { category: 'FILMTITEL', text: 'DER HERR DER RINGE' },
       { category: 'GEOGRAFIE', text: 'BAYERISCHER WALD' },
       { category: 'ESSEN', text: 'CURRYWURST MIT POMMES' },
-      { category: 'BERUF', text: 'SCHORNSTEIN- FEGER' }, // Split for safety
+      { category: 'BERUF', text: 'SCHORNSTEIN- FEGER' }, 
       { category: 'TECHNIK', text: 'KÜNSTLICHE INTELLIGENZ' },
       { category: 'TIERE', text: 'ELEFANT IM PORZELLAN- LADEN' },
       { category: 'SPRICHWORT', text: 'WER RASTET DER ROSTET' },
@@ -124,7 +127,7 @@ export class GeminiService {
       { category: 'BERUF', text: 'FEUERWEHR- MANN' },
       { category: 'SPIEL', text: 'MENSCH ÄRGERE DICH NICHT' },
       { category: 'ESSEN', text: 'SCHWARZWÄLDER KIRSCHTORTE' },
-      { category: 'NATUR', text: 'STALAKTITEN UND STALAGMITEN' }, // Might need tight fit
+      { category: 'NATUR', text: 'STALAKTITEN UND STALAGMITEN' }, 
       { category: 'ORT', text: 'SCHLOSS NEUSCHWAN- STEIN' },
       { category: 'TECHNIK', text: 'ELEKTRO- AUTO' },
       { category: 'FILM', text: 'KEIN OHR HASEN' },

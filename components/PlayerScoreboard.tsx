@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Player } from '../types';
 
@@ -21,8 +22,8 @@ const PlayerScoreboard: React.FC<PlayerScoreboardProps> = ({ players, activePlay
             }`}
           >
              {/* Player Name Badge */}
-            <div className={`absolute -top-3 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${isActive ? 'bg-yellow-500 text-black' : 'bg-gray-700 text-gray-300'}`}>
-                {player.name}
+            <div className={`absolute -top-3 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider flex gap-1 items-center ${isActive ? 'bg-yellow-500 text-black' : 'bg-gray-700 text-gray-300'}`}>
+                <span className="text-base">{player.avatar}</span> {player.name}
             </div>
 
             <div className="mt-2 text-center w-full">
@@ -39,11 +40,19 @@ const PlayerScoreboard: React.FC<PlayerScoreboardProps> = ({ players, activePlay
                 <span className="text-yellow-400 font-bold">{player.totalScore}</span>
             </div>
             
-            {player.hasExtraSpin && (
-                <div className="absolute -bottom-2 bg-purple-600 text-white text-[10px] px-2 py-0.5 rounded-full border border-purple-400 animate-bounce">
-                    EXTRA DREH
-                </div>
-            )}
+            {/* Inventory & Status Icons */}
+            <div className="absolute -bottom-2 flex gap-1">
+                {player.hasExtraSpin && (
+                    <div className="bg-purple-600 text-white text-[10px] px-2 py-0.5 rounded-full border border-purple-400 animate-bounce">
+                        EXTRA
+                    </div>
+                )}
+                {player.inventory.length > 0 && (
+                    <div className="bg-pink-600 text-white text-[10px] px-2 py-0.5 rounded-full border border-pink-400">
+                        {player.inventory.map(i => i === 'GIFT' ? '🎁' : i).join('')}
+                    </div>
+                )}
+            </div>
           </div>
         );
       })}

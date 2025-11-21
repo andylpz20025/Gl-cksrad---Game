@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { ALPHABET, CONSONANTS, GameState, VOWELS, VOWEL_COST } from '../types';
+import { ALPHABET, CONSONANTS, GameState, VOWELS, VOWEL_COST, GameConfig } from '../types';
 
 interface ControlsProps {
   gameState: GameState;
@@ -19,8 +19,9 @@ interface ControlsProps {
   onBonusSelect: (char: string) => void;
   onBonusSubmit: () => void;
   onExtraSpinDecision: (use: boolean) => void;
-  onConfigSelect: (mysteryRound: number) => void; // 0 = none, 1-4 = specific round
+  onConfigStart: (config: GameConfig, p1Avatar: string, p2Avatar: string, p3Avatar: string) => void;
   onMysteryDecision: (reveal: boolean) => void;
+  onTossUpBuzz: () => void;
 }
 
 const Controls: React.FC<ControlsProps> = ({
@@ -40,42 +41,173 @@ const Controls: React.FC<ControlsProps> = ({
   onBonusSelect,
   onBonusSubmit,
   onExtraSpinDecision,
-  onConfigSelect,
-  onMysteryDecision
+  onConfigStart,
+  onMysteryDecision,
+  onTossUpBuzz
 }) => {
   const [solveInput, setSolveInput] = useState('');
+  
+  // Local Config State
+  const [config, setConfig] = useState<GameConfig>({
+      mysteryRound: 0,
+      enableTossUp: false,
+      enableJackpot: false,
+      enableGiftTags: false,
+      enableFreePlay: false,
+      enableTTS: false,
+      enableAvatars: false,
+      categoryTheme: 'ALL'
+  });
+  
+  // Avatar Selection
+  const AVATARS = ['😀', '😎', '🤠', '👽', '🤖', '🦊', '🦄', '🐯', '⚽', '👑', '🎩', '🚀'];
+  const [p1Avatar, setP1Avatar] = useState('😀');
+  const [p2Avatar, setP2Avatar] = useState('😎');
+  const [p3Avatar, setP3Avatar] = useState('🤠');
 
   const canBuyVowel = currentMoney >= VOWEL_COST;
 
   // Game Config Screen
   if (gameState === GameState.GAME_CONFIG) {
       return (
-          <div className="w-full max-w-5xl mx-auto mt-6 p-8 bg-blue-900/95 rounded-xl backdrop-blur-md border-2 border-blue-500 text-center shadow-2xl animate-fade-in">
-              <h1 className="text-5xl font-display text-white mb-8 drop-shadow-lg">SPIEL KONFIGURATION</h1>
+          <div className="w-full max-w-6xl mx-auto mt-2 p-6 bg-blue-900/95 rounded-xl backdrop-blur-md border-2 border-blue-500 text-center shadow-2xl animate-fade-in h-[80vh] overflow-y-auto">
+              <h1 className="text-4xl font-display text-white mb-4 drop-shadow-lg">SPIEL KONFIGURATION</h1>
               
-              <div className="mb-8">
-                  <h3 className="text-2xl text-yellow-300 mb-4">Möchtest du die MYSTERY RUNDE aktivieren?</h3>
-                  <p className="text-gray-300 mb-6 max-w-2xl mx-auto">In der Mystery Runde erscheinen spezielle Felder auf dem Glücksrad. Riskant aber lukrativ!</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-left">
                   
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-3xl mx-auto">
-                      <button onClick={() => onConfigSelect(0)} className="bg-gray-600 hover:bg-gray-500 p-6 rounded-lg text-white font-bold text-xl transition transform hover:scale-105">
-                          KEINE MYSTERY RUNDE
-                          <div className="text-sm font-normal mt-2 text-gray-300">Standard (3 Runden)</div>
-                      </button>
+                  {/* Left Column: Core Modes */}
+                  <div className="bg-black/30 p-4 rounded-lg">
+                      <h3 className="text-xl text-yellow-400 font-bold mb-4 border-b border-gray-600 pb-2">SPIELMODUS</h3>
                       
-                      <div className="flex flex-col gap-2">
-                           <div className="text-white font-bold mb-1">In welcher Runde?</div>
-                           <button onClick={() => onConfigSelect(1)} className="bg-purple-700 hover:bg-purple-600 p-4 rounded text-white font-bold">Runde 1</button>
-                           <button onClick={() => onConfigSelect(2)} className="bg-purple-700 hover:bg-purple-600 p-4 rounded text-white font-bold">Runde 2</button>
-                           <button onClick={() => onConfigSelect(3)} className="bg-purple-700 hover:bg-purple-600 p-4 rounded text-white font-bold">Runde 3</button>
+                      <div className="mb-4">
+                          <label className="block text-white font-bold mb-2">Mystery Runde:</label>
+                          <div className="flex flex-wrap gap-2">
+                              <button onClick={() => setConfig({...config, mysteryRound: 0})} className={`px-3 py-1 rounded ${config.mysteryRound === 0 ? 'bg-green-600' : 'bg-gray-600'}`}>Aus</button>
+                              <button onClick={() => setConfig({...config, mysteryRound: 1})} className={`px-3 py-1 rounded ${config.mysteryRound === 1 ? 'bg-purple-600' : 'bg-gray-600'}`}>Runde 1</button>
+                              <button onClick={() => setConfig({...config, mysteryRound: 2})} className={`px-3 py-1 rounded ${config.mysteryRound === 2 ? 'bg-purple-600' : 'bg-gray-600'}`}>Runde 2</button>
+                              <button onClick={() => setConfig({...config, mysteryRound: 3})} className={`px-3 py-1 rounded ${config.mysteryRound === 3 ? 'bg-purple-600' : 'bg-gray-600'}`}>Runde 3</button>
+                              <button onClick={() => setConfig({...config, mysteryRound: 4})} className={`px-3 py-1 rounded ${config.mysteryRound === 4 ? 'bg-purple-600 border border-yellow-400' : 'bg-gray-600'}`}>Extra (4.)</button>
+                          </div>
                       </div>
 
-                      <button onClick={() => onConfigSelect(4)} className="bg-purple-600 hover:bg-purple-500 p-6 rounded-lg text-white font-bold text-xl border-2 border-yellow-400 shadow-[0_0_15px_rgba(168,85,247,0.5)] transition transform hover:scale-105">
-                          EXTRA RUNDE (4.)
-                          <div className="text-sm font-normal mt-2 text-gray-200">Als zusätzliche Runde vor dem Finale</div>
-                      </button>
+                      <div className="mb-4">
+                          <label className="block text-white font-bold mb-2">Kategorie Thema:</label>
+                          <select 
+                            value={config.categoryTheme} 
+                            onChange={(e) => setConfig({...config, categoryTheme: e.target.value})}
+                            className="bg-gray-700 text-white p-2 rounded w-full"
+                          >
+                              <option value="ALL">Alles (Gemischt)</option>
+                              <option value="80s">80er Jahre Spezial</option>
+                              <option value="KIDS">Kinder Edition</option>
+                              <option value="GEO">Geografie & Reisen</option>
+                              <option value="MOVIES">Kino & Stars</option>
+                          </select>
+                      </div>
+                  </div>
+
+                  {/* Right Column: Extras */}
+                  <div className="bg-black/30 p-4 rounded-lg">
+                      <h3 className="text-xl text-yellow-400 font-bold mb-4 border-b border-gray-600 pb-2">EXTRAS & OPTIONEN</h3>
+                      
+                      <div className="grid grid-cols-1 gap-3">
+                          <label className="flex items-center gap-3 cursor-pointer hover:bg-white/5 p-2 rounded">
+                              <input type="checkbox" checked={config.enableTossUp} onChange={(e) => setConfig({...config, enableTossUp: e.target.checked})} className="w-6 h-6 accent-green-500"/>
+                              <div>
+                                  <div className="font-bold text-white">Schnellraterunde (Toss-Up)</div>
+                                  <div className="text-xs text-gray-300">Startet vor Runde 1. Wer buzzert, gewinnt 1000 DM.</div>
+                              </div>
+                          </label>
+
+                          <label className="flex items-center gap-3 cursor-pointer hover:bg-white/5 p-2 rounded">
+                              <input type="checkbox" checked={config.enableJackpot} onChange={(e) => setConfig({...config, enableJackpot: e.target.checked})} className="w-6 h-6 accent-green-500"/>
+                              <div>
+                                  <div className="font-bold text-white">Progressiver Jackpot</div>
+                                  <div className="text-xs text-gray-300">Ein Jackpot-Feld auf dem Rad, wächst jede Runde.</div>
+                              </div>
+                          </label>
+
+                          <label className="flex items-center gap-3 cursor-pointer hover:bg-white/5 p-2 rounded">
+                              <input type="checkbox" checked={config.enableGiftTags} onChange={(e) => setConfig({...config, enableGiftTags: e.target.checked})} className="w-6 h-6 accent-green-500"/>
+                              <div>
+                                  <div className="font-bold text-white">Sachpreise (Geschenke)</div>
+                                  <div className="text-xs text-gray-300">Sammelbare 'Geschenk'-Felder auf dem Rad.</div>
+                              </div>
+                          </label>
+
+                          <label className="flex items-center gap-3 cursor-pointer hover:bg-white/5 p-2 rounded">
+                              <input type="checkbox" checked={config.enableFreePlay} onChange={(e) => setConfig({...config, enableFreePlay: e.target.checked})} className="w-6 h-6 accent-green-500"/>
+                              <div>
+                                  <div className="font-bold text-white">Freispiel (Free Play)</div>
+                                  <div className="text-xs text-gray-300">Raten ohne Risiko (auch Vokale kostenlos).</div>
+                              </div>
+                          </label>
+
+                          <label className="flex items-center gap-3 cursor-pointer hover:bg-white/5 p-2 rounded">
+                              <input type="checkbox" checked={config.enableTTS} onChange={(e) => setConfig({...config, enableTTS: e.target.checked})} className="w-6 h-6 accent-green-500"/>
+                              <div>
+                                  <div className="font-bold text-white">Sprachausgabe (TTS)</div>
+                                  <div className="text-xs text-gray-300">Liest das gelöste Rätsel vor.</div>
+                              </div>
+                          </label>
+                          
+                          <label className="flex items-center gap-3 cursor-pointer hover:bg-white/5 p-2 rounded">
+                              <input type="checkbox" checked={config.enableAvatars} onChange={(e) => setConfig({...config, enableAvatars: e.target.checked})} className="w-6 h-6 accent-green-500"/>
+                              <div>
+                                  <div className="font-bold text-white">Spieler Avatare</div>
+                                  <div className="text-xs text-gray-300">Emojis wählen.</div>
+                              </div>
+                          </label>
+                      </div>
                   </div>
               </div>
+
+              {config.enableAvatars && (
+                  <div className="bg-black/30 p-4 rounded-lg mt-4">
+                       <h3 className="text-xl text-yellow-400 font-bold mb-2">AVATAR WAHL</h3>
+                       <div className="flex justify-center gap-8">
+                           <div className="text-center">
+                               <div className="text-white text-sm mb-1">Spieler 1</div>
+                               <div className="grid grid-cols-4 gap-1">
+                                   {AVATARS.map(a => <button key={a} onClick={() => setP1Avatar(a)} className={`text-xl p-1 rounded ${p1Avatar === a ? 'bg-white/20' : ''}`}>{a}</button>)}
+                               </div>
+                           </div>
+                           <div className="text-center">
+                               <div className="text-white text-sm mb-1">Spieler 2</div>
+                               <div className="grid grid-cols-4 gap-1">
+                                   {AVATARS.map(a => <button key={a} onClick={() => setP2Avatar(a)} className={`text-xl p-1 rounded ${p2Avatar === a ? 'bg-white/20' : ''}`}>{a}</button>)}
+                               </div>
+                           </div>
+                           <div className="text-center">
+                               <div className="text-white text-sm mb-1">Spieler 3</div>
+                               <div className="grid grid-cols-4 gap-1">
+                                   {AVATARS.map(a => <button key={a} onClick={() => setP3Avatar(a)} className={`text-xl p-1 rounded ${p3Avatar === a ? 'bg-white/20' : ''}`}>{a}</button>)}
+                               </div>
+                           </div>
+                       </div>
+                  </div>
+              )}
+
+              <button onClick={() => onConfigStart(config, p1Avatar, p2Avatar, p3Avatar)} className="mt-8 bg-green-600 hover:bg-green-500 text-white text-2xl font-bold py-4 px-16 rounded-full shadow-[0_0_20px_rgba(22,163,74,0.6)] transition transform hover:scale-105">
+                  SPIEL STARTEN
+              </button>
+          </div>
+      )
+  }
+  
+  // Toss Up UI
+  if (gameState === GameState.TOSS_UP) {
+      return (
+          <div className="w-full max-w-3xl mx-auto mt-6 p-6 bg-red-900/90 rounded-xl backdrop-blur-sm border-2 border-red-500 text-center shadow-2xl">
+              <h2 className="text-4xl font-display text-white mb-2 animate-pulse">SCHNELLRATERUNDE</h2>
+              <p className="text-xl text-yellow-300 mb-8">Drücke den Buzzer, wenn du die Lösung weißt!</p>
+              
+              <button 
+                 onClick={onTossUpBuzz}
+                 className="w-48 h-48 rounded-full bg-red-600 border-8 border-red-800 shadow-[0_10px_0_rgb(153,27,27)] active:shadow-none active:translate-y-2 text-white text-3xl font-bold hover:bg-red-500 transition-all mx-auto flex items-center justify-center"
+              >
+                  BUZZER
+              </button>
           </div>
       )
   }
@@ -179,11 +311,6 @@ const Controls: React.FC<ControlsProps> = ({
                   {ALPHABET.map(char => {
                       const isSelected = bonusRoundSelection.includes(char);
                       const isVowel = VOWELS.includes(char);
-                      
-                      // Disable logic:
-                      // If selected -> disabled
-                      // If Vowel and we already have 1 -> disabled
-                      // If Consonant and we already have 5 -> disabled
                       const disabled = isSelected || 
                                        (isVowel && vowelCount >= neededVowels) || 
                                        (!isVowel && consCount >= neededCons);

@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState } from 'react';
-import { SegmentType, WheelSegment } from '../types';
+import { SegmentType, WheelSegment, GameConfig } from '../types';
 
 // 24 Segments 
 export const SEGMENTS: WheelSegment[] = [
@@ -30,7 +30,6 @@ export const SEGMENTS: WheelSegment[] = [
   { text: '150', value: 150, type: SegmentType.VALUE, color: '#FAFAFA', textColor: '#000' },  // White
 ];
 
-// Bonus Wheel Segments (12 Segments)
 export const BONUS_SEGMENTS: WheelSegment[] = [
     { text: '?', value: 0, type: SegmentType.VALUE, color: '#FACC15', textColor: '#000' },
     { text: '?', value: 0, type: SegmentType.VALUE, color: '#EF4444', textColor: '#fff' },
@@ -48,32 +47,54 @@ export const BONUS_SEGMENTS: WheelSegment[] = [
 
 interface WheelProps {
   rotation: number;
-  activePlayerIndex: number; // 0, 1, or 2
+  activePlayerIndex: number; 
   currentRound: number;
   isBonusWheelMode: boolean;
   isMysteryRound: boolean;
   mysteryRevealed: boolean;
+  config: GameConfig;
+  jackpotValue: number;
 }
 
-const Wheel: React.FC<WheelProps> = ({ rotation, activePlayerIndex, currentRound, isBonusWheelMode, isMysteryRound, mysteryRevealed }) => {
+const Wheel: React.FC<WheelProps> = ({ 
+  rotation, 
+  activePlayerIndex, 
+  currentRound, 
+  isBonusWheelMode, 
+  isMysteryRound, 
+  mysteryRevealed,
+  config,
+  jackpotValue
+}) => {
   
-  // If Mystery Round, replace two low value segments with MYSTERY segments
-  let segments = isBonusWheelMode ? BONUS_SEGMENTS : SEGMENTS;
+  let segments = isBonusWheelMode ? BONUS_SEGMENTS : [...SEGMENTS];
   
-  if (isMysteryRound && !isBonusWheelMode) {
-      // Clone segments to avoid mutating global constant
-      segments = [...SEGMENTS];
-      // Replace '150' and '200' at specific indices
-      // Index 6 (200 Red) and Index 17 (150 Light Orange)
+  // Apply Configurable Extras (Only on Normal Wheel)
+  if (!isBonusWheelMode) {
+      // JACKPOT: Replaces Index 1 (200 Green)
+      if (config.enableJackpot) {
+          segments[1] = { text: 'JACKPOT', value: jackpotValue, type: SegmentType.JACKPOT, color: '#B91C1C', textColor: '#fff' };
+      }
       
-      if (!mysteryRevealed) {
-        segments[6] = { text: '?', value: 0, type: SegmentType.MYSTERY, color: '#7E22CE', textColor: '#fff' }; // Purple Mystery
-        segments[17] = { text: '?', value: 0, type: SegmentType.MYSTERY, color: '#7E22CE', textColor: '#fff' }; // Purple Mystery
-      } else {
-        // Revealed: They become 1000 wedges (but keep a purple hint or just standard yellow? Prompt: "wird zu einem 1000er feld")
-        // Let's make them distinct 1000 wedges to show they changed
-        segments[6] = { text: '1000', value: 1000, type: SegmentType.VALUE, color: '#9333EA', textColor: '#fff' }; // Purple 1000
-        segments[17] = { text: '1000', value: 1000, type: SegmentType.VALUE, color: '#9333EA', textColor: '#fff' }; // Purple 1000
+      // FREE PLAY: Replaces Index 14 (250 Light Yellow)
+      if (config.enableFreePlay) {
+          segments[14] = { text: 'FREE', value: 0, type: SegmentType.FREE_PLAY, color: '#4C1D95', textColor: '#fff' };
+      }
+
+      // GIFT TAG: Replaces Index 23 (150 White)
+      if (config.enableGiftTags) {
+          segments[23] = { text: 'GESCHENK', value: 1000, type: SegmentType.GIFT, color: '#EC4899', textColor: '#fff' };
+      }
+
+      // Mystery Round Logic (Overwrites standard segments if it's mystery round)
+      if (isMysteryRound) {
+          if (!mysteryRevealed) {
+            segments[6] = { text: '?', value: 0, type: SegmentType.MYSTERY, color: '#7E22CE', textColor: '#fff' }; 
+            segments[17] = { text: '?', value: 0, type: SegmentType.MYSTERY, color: '#7E22CE', textColor: '#fff' }; 
+          } else {
+            segments[6] = { text: '1000', value: 1000, type: SegmentType.VALUE, color: '#9333EA', textColor: '#fff' }; 
+            segments[17] = { text: '1000', value: 1000, type: SegmentType.VALUE, color: '#9333EA', textColor: '#fff' }; 
+          }
       }
   }
 
@@ -83,7 +104,6 @@ const Wheel: React.FC<WheelProps> = ({ rotation, activePlayerIndex, currentRound
   const center = 50;
   const multiplier = Math.pow(2, currentRound - 1);
 
-  // LED Animation State
   const [lightFrame, setLightFrame] = useState(0);
 
   useEffect(() => {
@@ -98,14 +118,12 @@ const Wheel: React.FC<WheelProps> = ({ rotation, activePlayerIndex, currentRound
   return (
     <div className="relative w-[340px] h-[340px] sm:w-[400px] sm:h-[400px] md:w-[500px] md:h-[500px] lg:w-[600px] lg:h-[600px] mx-auto my-4">
       
-      {/* LED Lights Ring Background */}
       <div className="absolute inset-[-20px] rounded-full border-[12px] border-gray-800 bg-black shadow-[0_0_30px_rgba(0,0,0,0.8)]"></div>
       
-      {/* Lights */}
       {Array.from({ length: 36 }).map((_, i) => {
-          const angle = i * 10; // 36 lights
+          const angle = i * 10; 
           const isOn = i % 2 === lightFrame;
-          const lightRad = 50 + 6; // Position outside wheel
+          const lightRad = 50 + 6; 
           const top = 50 + lightRad * Math.sin((angle - 90) * Math.PI / 180);
           const left = 50 + lightRad * Math.cos((angle - 90) * Math.PI / 180);
           
@@ -118,7 +136,6 @@ const Wheel: React.FC<WheelProps> = ({ rotation, activePlayerIndex, currentRound
           );
       })}
 
-      {/* The Wheel Container */}
       <div
         className="absolute inset-0 rounded-full shadow-2xl border-[8px] border-gray-300 relative overflow-hidden transition-transform duration-[4000ms] cubic-bezier(0.1, 0.7, 0.1, 1)"
         style={{
@@ -146,7 +163,9 @@ const Wheel: React.FC<WheelProps> = ({ rotation, activePlayerIndex, currentRound
             if (!isBonusWheelMode && seg.type === SegmentType.VALUE) {
                 displayText = (seg.value * multiplier).toString();
             }
-            // Mystery text '?' or '1000' handled by segments array definition above
+            if (seg.type === SegmentType.JACKPOT) {
+                displayText = "JACKPOT"; // Special visual handling below
+            }
             
             const chars = displayText.split('');
             
@@ -154,6 +173,14 @@ const Wheel: React.FC<WheelProps> = ({ rotation, activePlayerIndex, currentRound
               <g key={i}>
                 <path d={d} fill={seg.color} stroke="#fff" strokeWidth="0.3" />
                 
+                {/* Special Icons */}
+                {seg.type === SegmentType.GIFT && (
+                    <text x={center + 35 * Math.cos(toRad(midAngle))} y={center + 35 * Math.sin(toRad(midAngle))} 
+                          textAnchor="middle" dominantBaseline="central" fontSize="5" transform={`rotate(${midAngle}, ${center + 35 * Math.cos(toRad(midAngle))}, ${center + 35 * Math.sin(toRad(midAngle))})`}>
+                        🎁
+                    </text>
+                )}
+
                 {chars.map((char, idx) => {
                    const startDist = 44; 
                    const step = 4;
@@ -169,7 +196,7 @@ const Wheel: React.FC<WheelProps> = ({ rotation, activePlayerIndex, currentRound
                             y={cy}
                             transform={`rotate(${midAngle}, ${cx}, ${cy})`}
                             fill={seg.textColor}
-                            fontSize="3.2"
+                            fontSize={seg.text.length > 6 ? "2.5" : "3.2"}
                             fontWeight="900"
                             textAnchor="middle"
                             dominantBaseline="central"
@@ -185,7 +212,6 @@ const Wheel: React.FC<WheelProps> = ({ rotation, activePlayerIndex, currentRound
           })}
         </svg>
         
-        {/* Center Hub */}
         <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[20%] h-[20%] bg-gradient-to-br from-yellow-300 to-orange-500 rounded-full shadow-[0_0_15px_rgba(0,0,0,0.5)] border-4 border-white flex items-center justify-center z-10">
             <div className="text-[8px] md:text-[10px] font-black text-white drop-shadow-md text-center leading-none font-display tracking-wider">
                 {isBonusWheelMode ? 'BONUS' : (isMysteryRound ? 'MYSTERY' : 'GLÜCKS')}<br/>RAD
@@ -193,10 +219,8 @@ const Wheel: React.FC<WheelProps> = ({ rotation, activePlayerIndex, currentRound
         </div>
       </div>
 
-      {/* Stoppers - Adjusted to be closer and perfectly aligned */}
       <div className="absolute inset-0 pointer-events-none z-30">
-        
-        {/* Player 1: Top (0 deg) - Red */}
+        {/* Player 1 */}
         <div className="absolute inset-0 flex justify-center">
              <div className={`absolute -top-3 flex flex-col items-center transition-all duration-300 origin-bottom ${activePlayerIndex === 0 ? 'scale-110 z-40' : 'opacity-60 grayscale z-30'}`}>
                  <div className="text-[10px] font-bold bg-red-600 text-white px-2 py-0.5 rounded mb-0.5 shadow border border-white/20 whitespace-nowrap">SPIELER 1</div>
@@ -204,7 +228,7 @@ const Wheel: React.FC<WheelProps> = ({ rotation, activePlayerIndex, currentRound
              </div>
         </div>
 
-        {/* Player 2: Bottom Right (120 deg) - Yellow */}
+        {/* Player 2 */}
         <div className="absolute inset-0 flex justify-center rotate-[120deg]">
              <div className={`absolute -top-3 flex flex-col items-center transition-all duration-300 origin-bottom ${activePlayerIndex === 1 ? 'scale-110 z-40' : 'opacity-60 grayscale z-30'}`}>
                  <div className="text-[10px] font-bold bg-yellow-500 text-black px-2 py-0.5 rounded mb-0.5 shadow border border-white/20 whitespace-nowrap -rotate-[120deg]">SPIELER 2</div>
@@ -212,14 +236,13 @@ const Wheel: React.FC<WheelProps> = ({ rotation, activePlayerIndex, currentRound
              </div>
         </div>
 
-        {/* Player 3: Bottom Left (240 deg) - Blue */}
+        {/* Player 3 */}
         <div className="absolute inset-0 flex justify-center rotate-[240deg]">
              <div className={`absolute -top-3 flex flex-col items-center transition-all duration-300 origin-bottom ${activePlayerIndex === 2 ? 'scale-110 z-40' : 'opacity-60 grayscale z-30'}`}>
                  <div className="text-[10px] font-bold bg-blue-600 text-white px-2 py-0.5 rounded mb-0.5 shadow border border-white/20 whitespace-nowrap -rotate-[240deg]">SPIELER 3</div>
                  <div className={`w-0 h-0 border-l-[10px] border-r-[10px] border-t-[20px] border-l-transparent border-r-transparent ${activePlayerIndex === 2 ? 'border-t-blue-600 drop-shadow-[0_4px_4px_rgba(37,99,235,0.6)]' : 'border-t-gray-500'}`}></div>
              </div>
         </div>
-
       </div>
     </div>
   );
