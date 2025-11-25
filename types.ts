@@ -8,7 +8,9 @@ export enum SegmentType {
   JACKPOT = 'JACKPOT',
   FREE_PLAY = 'FREE_PLAY',
   GIFT = 'GIFT',
-  RISK = 'RISK'
+  RISK = 'RISK',
+  MILLION = 'MILLION',
+  EXPRESS = 'EXPRESS'
 }
 
 export interface WheelSegment {
@@ -29,6 +31,8 @@ export interface Player {
   roundsWon: number;
   avatar: string; // Emoji
   inventory: string[]; // Collected Gift Tags
+  hasMillionWedge: boolean; // New: collected the 1M wedge
+  isAI: boolean; // New: Computer player
 }
 
 export interface Puzzle {
@@ -36,8 +40,14 @@ export interface Puzzle {
   text: string;
 }
 
+export type VisualTheme = 'STANDARD' | '80S' | '90S' | '2000S' | 'CURVED' | 'TV_STUDIO';
+export type WheelColorTheme = 'STANDARD' | 'RAINBOW' | 'PASTEL' | 'GOLD';
+
+export type HostName = 'FREDERIC' | 'PETER' | 'NONE';
+export type AssistantName = 'MAREN' | 'SONYA' | 'NONE';
+
 export interface GameConfig {
-  mysteryRound: number; // 0=None, 1-3=Round, 4=Extra, 5=All Rounds
+  mysteryRound: number[]; // e.g. [1, 3]
   enableTossUp: boolean;
   enableJackpot: boolean;
   enableGiftTags: boolean;
@@ -45,7 +55,29 @@ export interface GameConfig {
   enableTTS: boolean; // Text to Speech
   enableAvatars: boolean;
   categoryTheme: string; // 'ALL', '80s', 'KIDS', etc.
-  riskMode: number; // 0=Off, 1-3=Round, 4=All Rounds
+  riskMode: number[]; // e.g. [2]
+  millionWedgeMode: number[]; // e.g. [1, 2, 3, 4]
+  expressMode: number[]; // e.g. [3]
+  extraSpinMode: number[]; // e.g. [1, 2, 3, 4]
+  visualTheme: VisualTheme;
+  wheelColorTheme: WheelColorTheme;
+  enableGamepad: boolean;
+  
+  // New Features
+  enableAudienceMode: boolean; // Hides controls for TV view
+  
+  playerCount: number; // 1-6
+  playerNames: string[]; // Names for players
+  
+  aiPlayers: boolean[]; // [false, true, true, ...]
+  aiDifficulty: number[]; // [100, 100, 100, ...] -> IQ 0-200 per player
+
+  enableCustomWheel: boolean;
+  customSegments?: WheelSegment[];
+  
+  // Cast
+  host: HostName;
+  assistant: AssistantName;
 }
 
 export enum GameState {
@@ -58,6 +90,7 @@ export enum GameState {
   SPINNING,
   MYSTERY_DECISION,    // New: Player decides to flip mystery or not
   RISK_DECISION,       // New: Player decides to risk score or play safe
+  EXPRESS_DECISION,    // New: Player decides to board the Express
   GUESSING_CONSONANT,
   BUYING_VOWEL,
   SOLVING,

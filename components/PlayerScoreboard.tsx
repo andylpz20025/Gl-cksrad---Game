@@ -17,9 +17,16 @@ const PlayerScoreboard: React.FC<PlayerScoreboardProps> = ({ players, activePlay
       if (name.includes('TECHNIK') || name.includes('LAPTOP')) return '💻';
       return '🎁';
   };
+  
+  // Dynamic grid classes based on player count
+  const gridClass = players.length === 1 ? 'grid-cols-1 max-w-sm' :
+                    players.length === 2 ? 'grid-cols-2 max-w-2xl' :
+                    players.length === 3 ? 'grid-cols-3 max-w-4xl' :
+                    players.length === 4 ? 'grid-cols-2 md:grid-cols-4 max-w-5xl' :
+                    'grid-cols-2 md:grid-cols-3 max-w-5xl'; // 5 or 6 players
 
   return (
-    <div className="grid grid-cols-3 gap-2 md:gap-4 w-full max-w-4xl mx-auto mt-4">
+    <div className={`grid ${gridClass} gap-2 md:gap-4 w-full mx-auto mt-4`}>
       {players.map((player) => {
         const isActive = player.id === activePlayerId;
         return (

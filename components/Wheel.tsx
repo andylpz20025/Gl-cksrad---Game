@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState } from 'react';
-import { SegmentType, WheelSegment, GameConfig } from '../types';
+import { SegmentType, WheelSegment, GameConfig, WheelColorTheme } from '../types';
 
 // 24 Segments 
 export const SEGMENTS: WheelSegment[] = [
@@ -15,7 +15,7 @@ export const SEGMENTS: WheelSegment[] = [
   { text: '800', value: 800, type: SegmentType.VALUE, color: '#0EA5E9', textColor: '#fff' },  // Sky Blue
   { text: '750', value: 750, type: SegmentType.VALUE, color: '#0284C7', textColor: '#fff' },  // Blue
   { text: '350', value: 350, type: SegmentType.VALUE, color: '#A855F7', textColor: '#fff' },  // Purple
-  { text: 'EXTRA', value: 0, type: SegmentType.EXTRA_SPIN, color: '#D946EF', textColor: '#fff' }, // Fuchsia
+  { text: 'EXTRA', value: 0, type: SegmentType.EXTRA_SPIN, color: '#D946EF', textColor: '#fff' }, // Fuchsia (Index 11)
   { text: '700', value: 700, type: SegmentType.VALUE, color: '#E879F9', textColor: '#fff' },  // Pink
   { text: 'BANKROTT', value: 0, type: SegmentType.BANKRUPT, color: '#1F2937', textColor: '#F87171' }, // Black/Red
   { text: '250', value: 250, type: SegmentType.VALUE, color: '#FDE047', textColor: '#000' },  // Light Yellow
@@ -67,10 +67,52 @@ const Wheel: React.FC<WheelProps> = ({
   jackpotValue
 }) => {
   
-  let segments = isBonusWheelMode ? BONUS_SEGMENTS : [...SEGMENTS];
+  // Select Base Segments: Bonus, Custom (if enabled), or Standard
+  let segments: WheelSegment[];
+
+  if (isBonusWheelMode) {
+      segments = BONUS_SEGMENTS;
+  } else if (config.enableCustomWheel && config.customSegments && config.customSegments.length === 24) {
+      segments = [...config.customSegments];
+  } else {
+      segments = [...SEGMENTS];
+  }
   
-  // Apply Configurable Extras (Only on Normal Wheel)
+  // Apply Color Theme
+  if (!isBonusWheelMode && config.wheelColorTheme !== 'STANDARD') {
+      const rainbowColors = ['#FF0000', '#FF7F00', '#FFFF00', '#00FF00', '#0000FF', '#4B0082', '#9400D3'];
+      const pastelColors = ['#FCA5A5', '#FDBA74', '#FDE047', '#86EFAC', '#93C5FD', '#A5B4FC', '#D8B4FE'];
+      const goldColors = ['#CA8A04', '#EAB308', '#FACC15', '#FEF08A', '#78350F', '#92400E', '#B45309'];
+      
+      let palette = rainbowColors;
+      if (config.wheelColorTheme === 'PASTEL') palette = pastelColors;
+      if (config.wheelColorTheme === 'GOLD') palette = goldColors;
+
+      segments = segments.map((seg, i) => ({
+          ...seg,
+          color: palette[i % palette.length],
+          textColor: config.wheelColorTheme === 'PASTEL' || config.wheelColorTheme === 'GOLD' ? '#000' : '#fff'
+      }));
+  }
+
+  // Apply Configurable Extras (Only on Normal Wheel, even with Custom segments we inject logic features if selected)
   if (!isBonusWheelMode) {
+      
+      // SINGLE PLAYER OVERRIDE: Remove LOSE_TURN
+      if (config.playerCount === 1) {
+          if (segments[19].type === SegmentType.LOSE_TURN) {
+              segments[19] = { text: '500', value: 500, type: SegmentType.VALUE, color: '#A3E635', textColor: '#000' };
+          }
+      }
+
+      // CHECK IF EXTRA SPIN IS DISABLED FOR THIS ROUND
+      if (!config.extraSpinMode.includes(currentRound)) {
+          // Replace default EXTRA segment (Index 11) if it exists as EXTRA_SPIN
+          if (segments[11].type === SegmentType.EXTRA_SPIN) {
+              segments[11] = { text: '500', value: 500, type: SegmentType.VALUE, color: '#A855F7', textColor: '#fff' };
+          }
+      }
+
       // JACKPOT: Replaces Index 1 (200 Green)
       if (config.enableJackpot) {
           segments[1] = { text: 'JACKPOT', value: jackpotValue, type: SegmentType.JACKPOT, color: '#B91C1C', textColor: '#fff' };
@@ -87,8 +129,22 @@ const Wheel: React.FC<WheelProps> = ({
       }
 
       // RISK MODE (50/50): Replaces Index 4 (500 Amber)
-      if (config.riskMode === 4 || config.riskMode === currentRound) {
+      if (config.riskMode.includes(currentRound)) {
           segments[4] = { text: 'RISIKO', value: 0, type: SegmentType.RISK, color: '#000000', textColor: '#F97316' };
+      }
+
+      // EXPRESS MODE: Replaces Index 8 (800 Sky Blue)
+      if (config.expressMode.includes(currentRound)) {
+          segments[8] = { text: 'EXPRESS', value: 1000, type: SegmentType.EXPRESS, color: '#94A3B8', textColor: '#000' };
+      }
+
+      // MILLION WEDGE (Sandwiched between Bankrupts)
+      // Target Index 12 (Replacing 700 Pink)
+      // Neighbors 11 and 13 become Bankrupt
+      if (config.millionWedgeMode.includes(currentRound)) {
+          segments[11] = { text: 'BANKROTT', value: 0, type: SegmentType.BANKRUPT, color: '#000000', textColor: '#EF4444' };
+          segments[12] = { text: '1 MILLION', value: 0, type: SegmentType.MILLION, color: '#10B981', textColor: '#fff' };
+          segments[13] = { text: 'BANKROTT', value: 0, type: SegmentType.BANKRUPT, color: '#000000', textColor: '#EF4444' };
       }
 
       // Mystery Round Logic (Overwrites standard segments if it's mystery round)
@@ -119,6 +175,25 @@ const Wheel: React.FC<WheelProps> = ({
   }, []);
 
   const toRad = (deg: number) => ((deg - 90) * Math.PI) / 180;
+
+  // Determine stoppers based on player count
+  // 3 players: 0, 120, 240
+  // 1 player: 0
+  // 2 players: 0, 180
+  // 4 players: 0, 90, 180, 270
+  // 5 players: 0, 72, 144, 216, 288
+  // 6 players: 0, 60, 120, 180, 240, 300
+  const getStopperAngles = (count: number) => {
+      const angles = [];
+      const step = 360 / count;
+      for (let i = 0; i < count; i++) {
+          angles.push(i * step);
+      }
+      return angles;
+  };
+  
+  const stopperAngles = getStopperAngles(config.playerCount);
+  const playerColors = ['red', 'green', 'blue', 'yellow', 'purple', 'orange'];
 
   return (
     <div className="relative w-[340px] h-[340px] sm:w-[400px] sm:h-[400px] md:w-[500px] md:h-[500px] lg:w-[600px] lg:h-[600px] mx-auto my-4">
@@ -168,30 +243,62 @@ const Wheel: React.FC<WheelProps> = ({
             if (!isBonusWheelMode && seg.type === SegmentType.VALUE) {
                 displayText = (seg.value * multiplier).toString();
             }
-            if (seg.type === SegmentType.JACKPOT) {
-                displayText = "JACKPOT"; 
-            }
-            if (seg.type === SegmentType.RISK) {
-                displayText = "RISIKO";
-            }
+            if (seg.type === SegmentType.JACKPOT) displayText = "JACKPOT"; 
+            if (seg.type === SegmentType.RISK) displayText = "RISIKO";
+            if (seg.type === SegmentType.MILLION) displayText = "1 MILLION";
+            if (seg.type === SegmentType.EXPRESS) displayText = "EXPRESS";
+            
+            const isMillion = seg.type === SegmentType.MILLION;
+            const isExpress = seg.type === SegmentType.EXPRESS;
             
             const chars = displayText.split('');
             
             return (
               <g key={i}>
-                <path d={d} fill={seg.color} stroke="#fff" strokeWidth="0.3" />
+                <defs>
+                    <pattern id="sparkle" patternUnits="userSpaceOnUse" width="10" height="10">
+                        <rect width="10" height="10" fill="#10B981" />
+                        <circle cx="2" cy="2" r="1" fill="#FFF" opacity="0.5" />
+                        <circle cx="7" cy="8" r="1" fill="#FFF" opacity="0.5" />
+                    </pattern>
+                     <pattern id="metal" patternUnits="userSpaceOnUse" width="10" height="10">
+                        <rect width="10" height="10" fill="#94A3B8" />
+                        <line x1="0" y1="0" x2="10" y2="10" stroke="#CBD5E1" strokeWidth="1" />
+                    </pattern>
+                </defs>
                 
-                {/* Special Icons */}
+                <path 
+                    d={d} 
+                    fill={isMillion ? '#10B981' : (isExpress ? '#94A3B8' : seg.color)} 
+                    stroke="#fff" 
+                    strokeWidth="0.3" 
+                />
+                
                 {seg.type === SegmentType.GIFT && (
                     <text x={center + 35 * Math.cos(toRad(midAngle))} y={center + 35 * Math.sin(toRad(midAngle))} 
                           textAnchor="middle" dominantBaseline="central" fontSize="5" transform={`rotate(${midAngle}, ${center + 35 * Math.cos(toRad(midAngle))}, ${center + 35 * Math.sin(toRad(midAngle))})`}>
                         🎁
                     </text>
                 )}
+                
+                {isMillion && (
+                     <text x={center + 25 * Math.cos(toRad(midAngle))} y={center + 25 * Math.sin(toRad(midAngle))} 
+                          textAnchor="middle" dominantBaseline="central" fontSize="3" fill="white" transform={`rotate(${midAngle}, ${center + 25 * Math.cos(toRad(midAngle))}, ${center + 25 * Math.sin(toRad(midAngle))})`}>
+                        ✨
+                    </text>
+                )}
+
+                {isExpress && (
+                     <text x={center + 25 * Math.cos(toRad(midAngle))} y={center + 25 * Math.sin(toRad(midAngle))} 
+                          textAnchor="middle" dominantBaseline="central" fontSize="3" fill="black" transform={`rotate(${midAngle}, ${center + 25 * Math.cos(toRad(midAngle))}, ${center + 25 * Math.sin(toRad(midAngle))})`}>
+                        🚂
+                    </text>
+                )}
 
                 {chars.map((char, idx) => {
-                   const startDist = 44; 
-                   const step = 4;
+                   const isLong = displayText.length > 6;
+                   const startDist = isLong ? 46 : 44; 
+                   const step = isLong ? 3 : 4;
                    const charDist = startDist - (idx * step);
                    
                    const cx = center + charDist * Math.cos(toRad(midAngle));
@@ -204,7 +311,7 @@ const Wheel: React.FC<WheelProps> = ({
                             y={cy}
                             transform={`rotate(${midAngle}, ${cx}, ${cy})`}
                             fill={seg.textColor}
-                            fontSize={seg.text.length > 6 ? "2.5" : "3.2"}
+                            fontSize={isLong ? "2.2" : "3.2"}
                             fontWeight="900"
                             textAnchor="middle"
                             dominantBaseline="central"
@@ -228,29 +335,30 @@ const Wheel: React.FC<WheelProps> = ({
       </div>
 
       <div className="absolute inset-0 pointer-events-none z-30">
-        {/* Player 1 */}
-        <div className="absolute inset-0 flex justify-center">
-             <div className={`absolute -top-3 flex flex-col items-center transition-all duration-300 origin-bottom ${activePlayerIndex === 0 ? 'scale-110 z-40' : 'opacity-60 grayscale z-30'}`}>
-                 <div className="text-[10px] font-bold bg-red-600 text-white px-2 py-0.5 rounded mb-0.5 shadow border border-white/20 whitespace-nowrap">SPIELER 1</div>
-                 <div className={`w-0 h-0 border-l-[10px] border-r-[10px] border-t-[20px] border-l-transparent border-r-transparent ${activePlayerIndex === 0 ? 'border-t-red-600 drop-shadow-[0_4px_4px_rgba(220,38,38,0.6)]' : 'border-t-gray-500'}`}></div>
-             </div>
-        </div>
+        {stopperAngles.map((angle, idx) => {
+             const colorClass = idx === 0 ? 'bg-red-600 border-red-500' :
+                                idx === 1 ? 'bg-green-600 border-green-500' :
+                                idx === 2 ? 'bg-blue-600 border-blue-500' :
+                                idx === 3 ? 'bg-yellow-500 border-yellow-400' :
+                                idx === 4 ? 'bg-purple-600 border-purple-500' : 'bg-orange-600 border-orange-500';
 
-        {/* Player 2 */}
-        <div className="absolute inset-0 flex justify-center rotate-[120deg]">
-             <div className={`absolute -top-3 flex flex-col items-center transition-all duration-300 origin-bottom ${activePlayerIndex === 1 ? 'scale-110 z-40' : 'opacity-60 grayscale z-30'}`}>
-                 <div className="text-[10px] font-bold bg-yellow-500 text-black px-2 py-0.5 rounded mb-0.5 shadow border border-white/20 whitespace-nowrap -rotate-[120deg]">SPIELER 2</div>
-                 <div className={`w-0 h-0 border-l-[10px] border-r-[10px] border-t-[20px] border-l-transparent border-r-transparent ${activePlayerIndex === 1 ? 'border-t-yellow-500 drop-shadow-[0_4px_4px_rgba(234,179,8,0.6)]' : 'border-t-gray-500'}`}></div>
-             </div>
-        </div>
+             // Only show stopper for active player or show all? 
+             // Usually all stoppers are visible.
+             // Active one pops out.
+             
+             const isActive = activePlayerIndex === idx;
 
-        {/* Player 3 */}
-        <div className="absolute inset-0 flex justify-center rotate-[240deg]">
-             <div className={`absolute -top-3 flex flex-col items-center transition-all duration-300 origin-bottom ${activePlayerIndex === 2 ? 'scale-110 z-40' : 'opacity-60 grayscale z-30'}`}>
-                 <div className="text-[10px] font-bold bg-blue-600 text-white px-2 py-0.5 rounded mb-0.5 shadow border border-white/20 whitespace-nowrap -rotate-[240deg]">SPIELER 3</div>
-                 <div className={`w-0 h-0 border-l-[10px] border-r-[10px] border-t-[20px] border-l-transparent border-r-transparent ${activePlayerIndex === 2 ? 'border-t-blue-600 drop-shadow-[0_4px_4px_rgba(37,99,235,0.6)]' : 'border-t-gray-500'}`}></div>
-             </div>
-        </div>
+             return (
+                 <div key={idx} className="absolute inset-0 flex justify-center" style={{ transform: `rotate(${angle}deg)` }}>
+                     <div className={`absolute -top-3 flex flex-col items-center transition-all duration-300 origin-bottom ${isActive ? 'scale-110 z-40' : 'opacity-60 grayscale z-30'}`}>
+                         <div className={`text-[10px] font-bold ${colorClass.split(' ')[0]} text-white px-2 py-0.5 rounded mb-0.5 shadow border border-white/20 whitespace-nowrap`} style={{ transform: `rotate(-${angle}deg)` }}>
+                             {config.playerNames[idx] || `P${idx+1}`}
+                         </div>
+                         <div className={`w-0 h-0 border-l-[10px] border-r-[10px] border-t-[20px] border-l-transparent border-r-transparent border-t-${playerColors[idx]}-600 drop-shadow-[0_4px_4px_rgba(0,0,0,0.6)]`}></div>
+                     </div>
+                 </div>
+             );
+        })}
       </div>
     </div>
   );

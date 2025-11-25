@@ -4,15 +4,96 @@ import Wheel, { SEGMENTS, BONUS_SEGMENTS } from './components/Wheel';
 import PuzzleBoard from './components/PuzzleBoard';
 import Controls from './components/Controls';
 import PlayerScoreboard from './components/PlayerScoreboard';
-import { GameState, Player, Puzzle, VOWELS, VOWEL_COST, SegmentType, GameConfig } from './types';
+import { GameState, Player, Puzzle, VOWELS, VOWEL_COST, SegmentType, GameConfig, HostName, AssistantName, CONSONANTS, ALPHABET } from './types';
 import { geminiService } from './services/geminiService';
 import { soundService } from './services/soundService';
 
 const INITIAL_PLAYERS: Player[] = [
-  { id: 0, name: 'Spieler 1', roundScore: 0, totalScore: 0, hasExtraSpin: false, color: 'red', roundsWon: 0, avatar: '', inventory: [] },
-  { id: 1, name: 'Spieler 2', roundScore: 0, totalScore: 0, hasExtraSpin: false, color: 'green', roundsWon: 0, avatar: '', inventory: [] },
-  { id: 2, name: 'Spieler 3', roundScore: 0, totalScore: 0, hasExtraSpin: false, color: 'blue', roundsWon: 0, avatar: '', inventory: [] },
+  { id: 0, name: 'Spieler 1', roundScore: 0, totalScore: 0, hasExtraSpin: false, color: 'red', roundsWon: 0, avatar: '', inventory: [], hasMillionWedge: false, isAI: false },
+  { id: 1, name: 'Spieler 2', roundScore: 0, totalScore: 0, hasExtraSpin: false, color: 'green', roundsWon: 0, avatar: '', inventory: [], hasMillionWedge: false, isAI: false },
+  { id: 2, name: 'Spieler 3', roundScore: 0, totalScore: 0, hasExtraSpin: false, color: 'blue', roundsWon: 0, avatar: '', inventory: [], hasMillionWedge: false, isAI: false },
 ];
+
+const HOST_QUOTES = {
+  FREDERIC: {
+    WELCOME: ["Willkommen beim Glücksrad!", "Servus und Hallo!", "Schön, dass Sie dabei sind!"],
+    SPIN: ["Das Rad läuft!", "Eine gute Drehung!", "Schau ma mal!"],
+    BANKRUPT: ["Oh weh, der Bankrott.", "Das tut mir leid.", "Pech im Spiel..."],
+    SOLVE: ["Das ist absolut richtig!", "Fantastisch gelöst!", "Gratulation!"],
+    JACKPOT: ["Der Jackpot greift!", "Wahnsinn, Jackpot!"],
+    ERROR: ["Leider nein.", "Das war nichts.", "Schade."],
+    INTRO: ["Jetzt wird's spannend!", "Auf geht's!"]
+  },
+  PETER: {
+    WELCOME: ["Hallo liebe Leute!", "Auf geht's!", "Willkommen zur Show!"],
+    SPIN: ["Gib alles!", "Dreh das Ding!", "Komm schon!"],
+    BANKRUPT: ["Das ist bitter.", "Autsch, alles weg.", "Mist, Bankrott."],
+    SOLVE: ["Treffer versenkt!", "Volltreffer!", "Richtig!"],
+    JACKPOT: ["Jackpot Baby!", "Unglaublich!"],
+    ERROR: ["Daneben.", "Falsch.", "Nee, leider nicht."],
+    INTRO: ["Packen wir's an!", "Los geht's!"]
+  }
+};
+
+const ASSISTANT_QUOTES = {
+  MAREN: {
+    REVEAL: ["Den dreh ich gerne um.", "Da ist er.", "Ein schöner Buchstabe."],
+    NO_LETTER: ["Den haben wir leider nicht.", "Kommt nicht vor.", "Schade."]
+  },
+  SONYA: {
+    REVEAL: ["Hier ist er!", "Bingo!", "Der passt!"],
+    NO_LETTER: ["Nee, is nich da.", "Sorry, nicht dabei.", "Leider nein."]
+  }
+};
+
+// Custom Hook for Gamepad Polling
+const useGamepad = (enabled: boolean, gameState: GameState, callback: (input: string) => void) => {
+    const lastButtonRef = useRef<number | null>(null);
+    const lastTimeRef = useRef<number>(0);
+    
+    useEffect(() => {
+        if (!enabled) return;
+        
+        const poll = () => {
+            const gamepads = navigator.getGamepads();
+            if (!gamepads || !gamepads[0]) {
+                requestAnimationFrame(poll);
+                return;
+            }
+            
+            const gp = gamepads[0];
+            const now = Date.now();
+            
+            // Prevent super fast scrolling
+            if (now - lastTimeRef.current < 150) {
+                 requestAnimationFrame(poll);
+                 return;
+            }
+
+            let input = '';
+            
+            // D-Pad / Stick Threshold
+            if (gp.axes[1] < -0.5 || gp.buttons[12].pressed) input = 'UP';
+            else if (gp.axes[1] > 0.5 || gp.buttons[13].pressed) input = 'DOWN';
+            else if (gp.axes[0] < -0.5 || gp.buttons[14].pressed) input = 'LEFT';
+            else if (gp.axes[0] > 0.5 || gp.buttons[15].pressed) input = 'RIGHT';
+            
+            // Buttons (A=0, B=1)
+            else if (gp.buttons[0].pressed) input = 'A';
+            else if (gp.buttons[1].pressed) input = 'B';
+
+            if (input) {
+                 callback(input);
+                 lastTimeRef.current = now;
+            }
+            
+            requestAnimationFrame(poll);
+        };
+        
+        const loop = requestAnimationFrame(poll);
+        return () => cancelAnimationFrame(loop);
+    }, [enabled, gameState, callback]);
+};
 
 function App() {
   const [gameState, setGameState] = useState<GameState>(GameState.WELCOME);
@@ -32,7 +113,7 @@ function App() {
   
   // Config State
   const [gameConfig, setGameConfig] = useState<GameConfig>({
-      mysteryRound: 0, 
+      mysteryRound: [], 
       enableTossUp: false, 
       enableJackpot: false, 
       enableGiftTags: false, 
@@ -40,48 +121,296 @@ function App() {
       enableTTS: false,
       enableAvatars: false,
       categoryTheme: 'ALL',
-      riskMode: 0
+      riskMode: [],
+      millionWedgeMode: [],
+      expressMode: [],
+      extraSpinMode: [1, 2, 3, 4],
+      visualTheme: 'STANDARD',
+      wheelColorTheme: 'STANDARD',
+      enableGamepad: false,
+      enableAudienceMode: false,
+      enableCustomWheel: false,
+      customSegments: [...SEGMENTS],
+      playerCount: 3,
+      playerNames: ['Spieler 1', 'Spieler 2', 'Spieler 3'],
+      aiPlayers: [false, false, false],
+      aiDifficulty: [100, 100, 100],
+      host: 'NONE',
+      assistant: 'NONE'
   });
   
   const [mysteryRevealed, setMysteryRevealed] = useState(false);
-  
-  // Feature Specific States
   const [jackpotValue, setJackpotValue] = useState(5000);
   const [isFreePlayTurn, setIsFreePlayTurn] = useState(false);
   const [isRiskTurn, setIsRiskTurn] = useState(false);
+  const [isExpressRun, setIsExpressRun] = useState(false);
   const [tossUpInterval, setTossUpInterval] = useState<ReturnType<typeof setInterval> | null>(null);
 
-  // Bonus Round Vars
   const [bonusRoundSelection, setBonusRoundSelection] = useState<string[]>([]);
   const [bonusPrize, setBonusPrize] = useState<number>(0);
 
+  // Gamepad Focus State
+  const [focusedIndex, setFocusedIndex] = useState(0);
+
   const activePlayer = players[activePlayerIndex];
+  const PLAYER_COLORS = ['red', 'green', 'blue', 'yellow', 'purple', 'orange'];
+
+  // Helper to get random item from array
+  const getRandom = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)];
+
+  // Helper to get host comment and combine with message
+  const getFlavorMessage = (baseMessage: string, type: 'WELCOME' | 'SPIN' | 'BANKRUPT' | 'SOLVE' | 'JACKPOT' | 'ERROR' | 'INTRO' | 'REVEAL' | 'NO_LETTER') => {
+      let flavor = '';
+      const { host, assistant } = gameConfig;
+      let characterToSpeak = '';
+
+      // Host Quotes
+      if (host !== 'NONE' && HOST_QUOTES[host]) {
+          const q = HOST_QUOTES[host];
+          if (type === 'WELCOME' && q.WELCOME) { flavor = getRandom(q.WELCOME); characterToSpeak = host; }
+          else if (type === 'SPIN' && q.SPIN) { flavor = getRandom(q.SPIN); characterToSpeak = host; }
+          else if (type === 'BANKRUPT' && q.BANKRUPT) { flavor = getRandom(q.BANKRUPT); characterToSpeak = host; }
+          else if (type === 'SOLVE' && q.SOLVE) { flavor = getRandom(q.SOLVE); characterToSpeak = host; }
+          else if (type === 'JACKPOT' && q.JACKPOT) { flavor = getRandom(q.JACKPOT); characterToSpeak = host; }
+          else if (type === 'ERROR' && q.ERROR) { flavor = getRandom(q.ERROR); characterToSpeak = host; }
+          else if (type === 'INTRO' && q.INTRO) { flavor = getRandom(q.INTRO); characterToSpeak = host; }
+      }
+
+      // Assistant Quotes (for Reveal/No Letter)
+      if (assistant !== 'NONE' && ASSISTANT_QUOTES[assistant]) {
+          const a = ASSISTANT_QUOTES[assistant];
+          if (type === 'REVEAL' && a.REVEAL) { flavor = getRandom(a.REVEAL); characterToSpeak = assistant; }
+          else if (type === 'NO_LETTER' && a.NO_LETTER) { flavor = getRandom(a.NO_LETTER); characterToSpeak = assistant; }
+      }
+
+      if (flavor) {
+          // Speak the quote using the correct voice profile
+          if (characterToSpeak) {
+             soundService.speakCharacter(flavor, characterToSpeak);
+          }
+          // Combine for visual display
+          return baseMessage ? `${flavor} ${baseMessage}` : flavor;
+      }
+      return baseMessage;
+  };
+
+  // --- AI LOGIC LOOP ---
+  useEffect(() => {
+      const performAIAction = async () => {
+          if (!activePlayer.isAI) return;
+          if (isSpinning || gameState === GameState.ROUND_END || gameState === GameState.GAME_OVER || gameState === GameState.SETUP || gameState === GameState.ROUND_START) return;
+
+          // Intelligence Level (0 - 200)
+          const iq = gameConfig.aiDifficulty[activePlayerIndex];
+          
+          // Delay for realism (Faster if IQ is high, slower if dumb)
+          const delay = Math.max(500, 2000 - (iq * 5));
+          await new Promise(r => setTimeout(r, delay));
+
+          // Check if turn has passed due to async issues
+          if (players[activePlayerIndex].id !== activePlayer.id) return;
+
+          // Helper: Common German Consonant Frequency
+          const GERMAN_FREQ = ['E', 'N', 'I', 'R', 'S', 'T', 'A', 'H', 'D', 'U', 'L', 'C', 'G', 'M', 'O', 'B', 'W', 'F', 'K', 'Z', 'P', 'V', 'Ü', 'Ä', 'Ö', 'J', 'Y', 'X', 'Q'];
+          
+          // DECISION LOGIC
+          if (gameState === GameState.SPIN_OR_SOLVE) {
+               if (puzzle) {
+                   const totalChars = puzzle.text.replace(/[^A-ZÄÖÜß]/g, '').length;
+                   const knownChars = puzzle.text.replace(/[^A-ZÄÖÜß]/g, '').split('').filter(c => guessedLetters.has(c)).length;
+                   const percent = knownChars / totalChars;
+                   
+                   // SOLVE DECISION
+                   const requiredPercent = 0.95 - ((iq / 200) * 0.7); 
+                   const geniusMove = iq > 150 && Math.random() > 0.8 && percent > 0.3;
+
+                   if (percent > requiredPercent || geniusMove) {
+                       setGameState(GameState.SOLVING);
+                       return;
+                   }
+               }
+               
+               // In Express Run, we CANNOT spin.
+               if (isExpressRun) {
+                   // AI always chooses to guess consonant if running express, or solve
+                   setGameState(GameState.GUESSING_CONSONANT);
+                   return;
+               }
+
+               const hasMoney = activePlayer.roundScore >= VOWEL_COST;
+               const shouldBuy = hasMoney && (iq > 100 ? Math.random() > 0.4 : Math.random() > 0.8);
+               
+               if (shouldBuy) {
+                   handleStartBuyingVowelWrapper();
+                   return;
+               }
+               handleSpinWrapper();
+          } 
+          else if (gameState === GameState.GUESSING_CONSONANT) {
+              const available = CONSONANTS.filter(c => !guessedLetters.has(c));
+              if (available.length > 0) {
+                  let chosenChar = '';
+
+                  if (iq < 50) {
+                      chosenChar = available[Math.floor(Math.random() * available.length)];
+                  } else if (iq < 150) {
+                      const sorted = available.sort((a, b) => GERMAN_FREQ.indexOf(a) - GERMAN_FREQ.indexOf(b));
+                      const topCandidates = sorted.slice(0, 5);
+                      chosenChar = topCandidates[Math.floor(Math.random() * topCandidates.length)] || available[0];
+                  } else {
+                      const cheatChance = (iq - 100) / 100;
+                      const correctAvailable = available.filter(c => puzzle?.text.includes(c));
+                      if (Math.random() < cheatChance && correctAvailable.length > 0) {
+                          chosenChar = correctAvailable[Math.floor(Math.random() * correctAvailable.length)];
+                      } else {
+                          const sorted = available.sort((a, b) => GERMAN_FREQ.indexOf(a) - GERMAN_FREQ.indexOf(b));
+                          chosenChar = sorted[0];
+                      }
+                  }
+                  handleGuessConsonant(chosenChar);
+              }
+          }
+          else if (gameState === GameState.BUYING_VOWEL) {
+              const available = VOWELS.filter(c => !guessedLetters.has(c));
+              if (available.length > 0) {
+                  const sorted = available.sort((a, b) => GERMAN_FREQ.indexOf(a) - GERMAN_FREQ.indexOf(b));
+                  const randomChar = iq < 80 ? available[Math.floor(Math.random() * available.length)] : sorted[0];
+                  handleBuyVowel(randomChar);
+              } else {
+                  setGameState(GameState.SPIN_OR_SOLVE);
+              }
+          }
+          else if (gameState === GameState.SOLVING) {
+               if (puzzle) {
+                   const successChance = 0.1 + ((iq / 200) * 0.9);
+                   if (Math.random() < successChance) {
+                       handleSolve(puzzle.text);
+                   } else {
+                       handleSolve("FALSCHE ANTWORT");
+                   }
+               }
+          }
+          else if (gameState === GameState.EXTRA_SPIN_PROMPT) {
+              handleExtraSpinDecision(true); 
+          }
+          else if (gameState === GameState.MYSTERY_DECISION) {
+              if (iq > 120) handleMysteryDecision(activePlayer.roundScore < 2000);
+              else handleMysteryDecision(Math.random() > 0.5);
+          }
+          else if (gameState === GameState.RISK_DECISION) {
+              if (iq > 120) handleRiskDecision(activePlayer.roundScore < 1500);
+              else handleRiskDecision(Math.random() > 0.5);
+          }
+          else if (gameState === GameState.EXPRESS_DECISION) {
+              // AI is usually greedy in Express mode if IQ is decent
+              handleExpressDecision(iq > 50);
+          }
+      };
+
+      performAIAction();
+  }, [gameState, activePlayerIndex, isSpinning, activePlayer, guessedLetters]);
+
+  // GAMEPAD LOGIC HANDLER
+  const handleGamepadInput = useCallback((input: string) => {
+      if (!gameConfig.enableGamepad) return;
+      
+      const maxIdx = {
+          [GameState.SPIN_OR_SOLVE]: 2,
+          [GameState.GUESSING_CONSONANT]: CONSONANTS.length - 1,
+          [GameState.BUYING_VOWEL]: VOWELS.length, // +1 for Cancel
+          [GameState.SOLVING]: 1, // OK / Back
+          [GameState.BONUS_ROUND_SELECTION]: ALPHABET.length, // +1 Submit
+          [GameState.MYSTERY_DECISION]: 1,
+          [GameState.RISK_DECISION]: 1,
+          [GameState.EXTRA_SPIN_PROMPT]: 1,
+          [GameState.EXPRESS_DECISION]: 1
+      }[gameState] || 0;
+
+      if (input === 'LEFT' || input === 'UP') {
+          setFocusedIndex(prev => (prev - 1 + (maxIdx + 1)) % (maxIdx + 1));
+          soundService.playClick();
+      } else if (input === 'RIGHT' || input === 'DOWN') {
+          setFocusedIndex(prev => (prev + 1) % (maxIdx + 1));
+          soundService.playClick();
+      } else if (input === 'A') {
+          // Trigger Action based on focused element
+          if (gameState === GameState.SPIN_OR_SOLVE) {
+              if (focusedIndex === 0 && !isExpressRun) handleSpinWrapper();
+              if (focusedIndex === 1) handleStartBuyingVowelWrapper();
+              if (focusedIndex === 2) setGameState(GameState.SOLVING);
+          }
+          else if (gameState === GameState.GUESSING_CONSONANT) {
+              handleGuessConsonant(CONSONANTS[focusedIndex]);
+          }
+          else if (gameState === GameState.BUYING_VOWEL) {
+              if (focusedIndex < VOWELS.length) handleBuyVowel(VOWELS[focusedIndex]);
+              else setGameState(GameState.SPIN_OR_SOLVE);
+          }
+          else if (gameState === GameState.MYSTERY_DECISION) {
+               handleMysteryDecision(focusedIndex === 0);
+          }
+          else if (gameState === GameState.RISK_DECISION) {
+               handleRiskDecision(focusedIndex === 0);
+          }
+          else if (gameState === GameState.EXPRESS_DECISION) {
+               handleExpressDecision(focusedIndex === 0);
+          }
+          else if (gameState === GameState.EXTRA_SPIN_PROMPT) {
+               handleExtraSpinDecision(focusedIndex === 0);
+          }
+          else if (gameState === GameState.BONUS_ROUND_SELECTION) {
+              if (focusedIndex < ALPHABET.length) handleBonusSelect(ALPHABET[focusedIndex]);
+              else handleBonusSubmit();
+          }
+      } else if (input === 'B') {
+          if (gameState === GameState.GUESSING_CONSONANT || gameState === GameState.BUYING_VOWEL || gameState === GameState.SOLVING) {
+              setGameState(GameState.SPIN_OR_SOLVE);
+          }
+      }
+  }, [gameState, focusedIndex, gameConfig.enableGamepad, isExpressRun]);
+
+  useGamepad(gameConfig.enableGamepad, gameState, handleGamepadInput);
+
+  // Reset focus when state changes
+  useEffect(() => {
+      setFocusedIndex(0);
+  }, [gameState]);
 
   const enterConfig = () => {
       setGameState(GameState.GAME_CONFIG);
   };
 
-  const handleConfigStart = (config: GameConfig, p1Av: string, p2Av: string, p3Av: string) => {
+  const handleConfigStart = (config: GameConfig, avatars: string[]) => {
       setGameConfig(config);
-      
-      // Set avatars
-      if (config.enableAvatars) {
-          setPlayers(prev => [
-              {...prev[0], avatar: p1Av},
-              {...prev[1], avatar: p2Av},
-              {...prev[2], avatar: p3Av},
-          ]);
-      }
-
-      startGame(config);
+      // Players are initialized in startGame now
+      startGame(config, avatars);
   };
 
-  const startGame = (config: GameConfig) => {
-    // Reset essential stats but keep avatars if set
-    setPlayers(prev => prev.map(p => ({...p, roundScore: 0, totalScore: 0, hasExtraSpin: false, roundsWon: 0, inventory: []})));
+  const handleQuitGame = () => {
+      if (tossUpInterval) clearInterval(tossUpInterval);
+      setGameState(GameState.WELCOME);
+  };
+
+  const startGame = (config: GameConfig, avatars?: string[]) => {
+    // Generate players dynamically
+    const newPlayers: Player[] = Array.from({ length: config.playerCount }).map((_, i) => ({
+        id: i,
+        name: config.playerNames[i] || `Spieler ${i + 1}`,
+        roundScore: 0,
+        totalScore: 0,
+        hasExtraSpin: false,
+        color: PLAYER_COLORS[i % PLAYER_COLORS.length],
+        roundsWon: 0,
+        avatar: avatars ? avatars[i] : '',
+        inventory: [],
+        hasMillionWedge: false,
+        isAI: config.aiPlayers[i]
+    }));
+
+    setPlayers(newPlayers);
     setCurrentRound(1);
     setActivePlayerIndex(0); 
-    setJackpotValue(5000); // Reset Jackpot at start of game
+    setJackpotValue(5000); 
     
     if (config.enableTossUp) {
         startTossUpRound(config);
@@ -90,12 +419,10 @@ function App() {
     }
   };
   
-  // Helper to automatically reveal special chars and digits
   const getInitialGuessedLetters = (text: string): Set<string> => {
       const initial = new Set<string>();
       const chars = text.replace(/ /g, '').split('');
       chars.forEach(c => {
-          // Reveal hyphens and Digits (0-9)
           if (c === '-' || /[0-9]/.test(c)) {
               initial.add(c);
           }
@@ -103,7 +430,6 @@ function App() {
       return initial;
   }
 
-  // --- TOSS UP LOGIC ---
   const startTossUpRound = async (config: GameConfig) => {
       setGameState(GameState.SETUP);
       setMessage("SCHNELLRATERUNDE! Gleich geht's los...");
@@ -112,13 +438,9 @@ function App() {
       try {
           const newPuzzle = (await geminiService.generatePuzzle('easy', [], config.categoryTheme)) as Puzzle;
           setPuzzle(newPuzzle);
-          // Auto reveal digits/hyphens immediately
-          const initialLetters = getInitialGuessedLetters(newPuzzle.text as string);
-          setGuessedLetters(initialLetters);
-          
+          setGuessedLetters(getInitialGuessedLetters(newPuzzle.text as string));
           setGameState(GameState.TOSS_UP);
           
-          // Start auto-reveal
           const allLetters = newPuzzle.text.replace(/[^A-ZÄÖÜß]/g, '').split('');
           const uniqueLetters = Array.from(new Set(allLetters));
           
@@ -128,9 +450,7 @@ function App() {
                   clearInterval(interval);
                   return;
               }
-              
-              // Reveal a random unrevealed letter
-              const charToReveal = uniqueLetters[revealStep];
+              const charToReveal = uniqueLetters[revealStep] as string;
               setGuessedLetters(prev => new Set(prev).add(charToReveal));
               soundService.playReveal();
               revealStep++;
@@ -150,12 +470,12 @@ function App() {
       setGameState(GameState.SOLVING);
   };
 
-  // --- MAIN ROUND LOGIC ---
   const startRound = async (roundNum: number, startPlayerIndex: number, config: GameConfig, starterCapital: number = 0) => {
     setGameState(GameState.SETUP);
+    const isMystery = config.mysteryRound.includes(roundNum);
     
-    const isMystery = config.mysteryRound === 5 || roundNum === config.mysteryRound;
-    setMessage(isMystery ? `MYSTERY RUNDE ${roundNum}!` : `Runde ${roundNum} wird generiert...`);
+    // Intro Message with Host Quote
+    setMessage(getFlavorMessage(isMystery ? `MYSTERY RUNDE ${roundNum}!` : `Runde ${roundNum} wird generiert...`, 'INTRO'));
     
     setPlayers(prev => prev.map((p, idx) => ({ 
         ...p, 
@@ -168,16 +488,13 @@ function App() {
     setMysteryRevealed(false);
     setIsFreePlayTurn(false);
     setIsRiskTurn(false);
+    setIsExpressRun(false);
     
     try {
-      // If Round 4 exists, make it Hard too
       const difficulty: 'easy' | 'medium' | 'hard' = roundNum >= 3 ? 'hard' : (roundNum === 2 ? 'medium' : 'easy');
       const newPuzzle = (await geminiService.generatePuzzle(difficulty, usedCategories, config.categoryTheme)) as Puzzle;
       setPuzzle(newPuzzle);
-      
-      // Auto reveal digits/hyphens
       setGuessedLetters(getInitialGuessedLetters(newPuzzle.text as string));
-      
       setUsedCategories(prev => [...prev, newPuzzle.category]);
       setGameState(GameState.ROUND_START);
       setTimeout(() => setGameState(GameState.SPIN_OR_SOLVE), 2500);
@@ -192,12 +509,13 @@ function App() {
          handleGameOver();
          return;
     }
-    setActivePlayerIndex((prev) => (prev + 1) % 3);
+    setActivePlayerIndex((prev) => (prev + 1) % gameConfig.playerCount);
     setIsFreePlayTurn(false);
     setIsRiskTurn(false);
+    setIsExpressRun(false);
     setGameState(GameState.SPIN_OR_SOLVE);
     setMessage('');
-  }, [gameState]);
+  }, [gameState, gameConfig.playerCount]);
 
   const handleExtraSpinDecision = (useIt: boolean) => {
       if (useIt) {
@@ -218,33 +536,31 @@ function App() {
       const multiplier = Math.pow(2, currentRound - 1);
       
       if (!reveal) {
-          // Safe option
           const val = 1000 * multiplier;
           setLastSpinResult(val);
           setMessage(`Sicher gespielt: 1.000er Wert.`);
           setGameState(GameState.GUESSING_CONSONANT);
       } else {
-          // Risk option
           setMysteryRevealed(true);
-          // 50/50
           const isGood = Math.random() > 0.5;
           if (isGood) {
              const val = 10000 * multiplier;
              setLastSpinResult(val);
              soundService.playCorrect();
-             setMessage(`GLÜCKWUNSCH! 10.000er WERT!`);
+             setMessage(getFlavorMessage(`10.000er WERT!`, 'JACKPOT'));
              setTimeout(() => setGameState(GameState.GUESSING_CONSONANT), 1500);
           } else {
              soundService.playBankrupt();
              setPlayers(prev => {
                 const copy = [...prev];
                 copy[activePlayerIndex].roundScore = 0;
+                copy[activePlayerIndex].hasMillionWedge = false; 
                 return copy;
              });
              if (players[activePlayerIndex].hasExtraSpin) {
                  setGameState(GameState.EXTRA_SPIN_PROMPT);
              } else {
-                 setMessage('BANKROTT! Risiko verloren.');
+                 setMessage(getFlavorMessage('BANKROTT! Risiko verloren.', 'BANKRUPT'));
                  setTimeout(nextTurn, 2000);
              }
           }
@@ -253,48 +569,45 @@ function App() {
 
   const handleRiskDecision = (risk: boolean) => {
       const multiplier = Math.pow(2, currentRound - 1);
-
       if (risk) {
           setIsRiskTurn(true);
           setMessage('RISIKO! Alles oder Nichts.');
           setGameState(GameState.GUESSING_CONSONANT);
       } else {
-          // Play safe for 500
           setLastSpinResult(500 * multiplier);
           setMessage('Sicher gespielt für 500.');
           setGameState(GameState.GUESSING_CONSONANT);
       }
   };
 
-  const hasUnrevealedConsonants = useCallback(() => {
-    if (!puzzle) return true;
-    const puzzleChars = new Set(puzzle.text.replace(/[^A-ZÄÖÜß]/g, '').split(''));
-    for (let char of puzzleChars) {
-        if (!VOWELS.includes(char) && !guessedLetters.has(char)) {
-            return true;
-        }
-    }
-    return false;
-  }, [puzzle, guessedLetters]);
-
-  const hasUnrevealedVowels = useCallback(() => {
-    if (!puzzle) return true;
-    const puzzleChars = new Set(puzzle.text.replace(/[^A-ZÄÖÜß]/g, '').split(''));
-    for (let char of puzzleChars) {
-        if (VOWELS.includes(char) && !guessedLetters.has(char)) {
-            return true;
-        }
-    }
-    return false;
-  }, [puzzle, guessedLetters]);
+  const handleExpressDecision = (board: boolean) => {
+       if (board) {
+           setIsExpressRun(true);
+           setLastSpinResult(1000); 
+           setMessage('EXPRESS FAHRT! 1.000 DM pro Konsonant. Ein Fehler = Bankrott.');
+           setGameState(GameState.GUESSING_CONSONANT);
+       } else {
+           setLastSpinResult(1000);
+           setMessage('Normal weiter: 1.000 DM für diesen Zug.');
+           setGameState(GameState.GUESSING_CONSONANT);
+       }
+  };
 
   const handleSpinWrapper = () => {
     if (gameState === GameState.BONUS_WHEEL_SPIN) {
         handleBonusWheelSpin();
         return;
     }
-    // Free Play allows vowels without buying, but standard spin needs consonants usually
-    if (!hasUnrevealedConsonants() && !isFreePlayTurn) {
+    if (!puzzle) return;
+    
+    let hasCons = false;
+    for(const c of puzzle.text.replace(/[^A-ZÄÖÜß]/g, '').split('')) {
+        if (!VOWELS.includes(c) && !guessedLetters.has(c)) {
+            hasCons = true; break;
+        }
+    }
+
+    if (!hasCons && !isFreePlayTurn) {
         soundService.playWarning();
         setMessage('Keine Konsonanten mehr! Bitte lösen.');
         return;
@@ -303,18 +616,10 @@ function App() {
   };
 
   const handleStartBuyingVowelWrapper = () => {
-    if (!hasUnrevealedVowels()) {
-        soundService.playWarning();
-        setMessage('Keine Vokale mehr!');
-        return;
-    }
-    
-    // If Free Play, skip check
     if (isFreePlayTurn) {
          setGameState(GameState.BUYING_VOWEL);
          return;
     }
-    
     if (activePlayer.roundScore < VOWEL_COST) {
         soundService.playWarning();
         return;
@@ -324,16 +629,15 @@ function App() {
 
   const handleSpin = () => {
     if (isSpinning) return;
-    
     setGameState(GameState.SPINNING);
     setIsSpinning(true);
     soundService.playClick(); 
     
+    setMessage(getFlavorMessage('', 'SPIN'));
+
     const spinAmount = 1080 + Math.floor(Math.random() * 720);
     const newRotation = wheelRotation + spinAmount;
-    
     setWheelRotation(newRotation);
-
     setTimeout(() => {
       setIsSpinning(false);
       calculateSpinResult(newRotation);
@@ -342,57 +646,78 @@ function App() {
   
   const handleBonusWheelSpin = () => {
       if (isSpinning) return;
-      
       setIsSpinning(true);
       soundService.playClick();
-      
+      setMessage(getFlavorMessage('Viel Glück für den Bonus!', 'SPIN'));
+
       const spinAmount = 1080 + Math.floor(Math.random() * 720);
       const newRotation = wheelRotation + spinAmount;
       setWheelRotation(newRotation);
       
       setTimeout(() => {
           setIsSpinning(false);
-          // Prize is determined!
-          const prizes = [10000, 20000, 30000, 40000, 50000, 75000, 100000, 1000000]; 
+          let prizes = [10000, 20000, 30000, 40000, 50000, 75000, 100000, 100000]; 
+          
+          if (activePlayer.hasMillionWedge) {
+              setMessage(getFlavorMessage('MILLIONEN CHANCE AKTIV!', 'JACKPOT'));
+              prizes = [10000, 20000, 30000, 40000, 50000, 75000, 100000, 1000000]; 
+          }
+          
           const wonPrize = prizes[Math.floor(Math.random() * prizes.length)];
           setBonusPrize(wonPrize);
           
           setMessage('Preis ermittelt!');
           setTimeout(() => {
               setGameState(GameState.BONUS_ROUND_SELECTION);
-          }, 1500);
+          }, 2000);
       }, 4000);
   };
 
   const calculateSpinResult = (finalRotation: number) => {
-    // Stopper Positions
-    const stopperAngles = [0, 120, 240];
+    const stopperAngles = Array.from({length: gameConfig.playerCount}, (_, i) => i * (360 / gameConfig.playerCount));
     const currentStopperAngle = stopperAngles[activePlayerIndex];
-
     const rotationMod = finalRotation % 360;
     const hitAngle = (currentStopperAngle - rotationMod + 360) % 360;
     
-    // Determine which segment list we are using for calculation
     let currentSegments = [...SEGMENTS];
+    if (gameConfig.enableCustomWheel && gameConfig.customSegments && gameConfig.customSegments.length === 24) {
+        currentSegments = [...gameConfig.customSegments];
+    }
     
-    // Apply Config Overrides for Logical Calculation
-    if (gameConfig.enableJackpot) {
-         currentSegments[1] = { text: 'JACKPOT', value: jackpotValue, type: SegmentType.JACKPOT, color: '#B91C1C', textColor: '#fff' };
-    }
-    if (gameConfig.enableFreePlay) {
-         currentSegments[14] = { text: 'FREE', value: 0, type: SegmentType.FREE_PLAY, color: '#4C1D95', textColor: '#fff' };
-    }
-    if (gameConfig.enableGiftTags) {
-         currentSegments[23] = { text: 'GESCHENK', value: 1000, type: SegmentType.GIFT, color: '#EC4899', textColor: '#fff' };
+    // Apply Config Overrides
+    
+    // Single Player Override
+    if (gameConfig.playerCount === 1) {
+         if (currentSegments[19].type === SegmentType.LOSE_TURN) {
+              currentSegments[19] = { text: '500', value: 500, type: SegmentType.VALUE, color: '#A3E635', textColor: '#000' };
+         }
     }
 
-    // Risk Mode Override
-    if (gameConfig.riskMode === 4 || gameConfig.riskMode === currentRound) {
-         currentSegments[4] = { text: 'RISIKO', value: 0, type: SegmentType.RISK, color: '#000000', textColor: '#F97316' };
+    if (!gameConfig.extraSpinMode.includes(currentRound)) {
+        if (currentSegments[11].type === SegmentType.EXTRA_SPIN) {
+             currentSegments[11] = { text: '500', value: 500, type: SegmentType.VALUE, color: '#A855F7', textColor: '#fff' };
+        }
     }
 
-    const isMystery = gameConfig.mysteryRound === 5 || currentRound === gameConfig.mysteryRound;
+    if (gameConfig.enableJackpot) currentSegments[1] = { text: 'JACKPOT', value: jackpotValue, type: SegmentType.JACKPOT, color: '#B91C1C', textColor: '#fff' };
+    if (gameConfig.enableFreePlay) currentSegments[14] = { text: 'FREE', value: 0, type: SegmentType.FREE_PLAY, color: '#4C1D95', textColor: '#fff' };
+    if (gameConfig.enableGiftTags) currentSegments[23] = { text: 'GESCHENK', value: 1000, type: SegmentType.GIFT, color: '#EC4899', textColor: '#fff' };
+    
+    if (gameConfig.riskMode.includes(currentRound)) {
+        currentSegments[4] = { text: 'RISIKO', value: 0, type: SegmentType.RISK, color: '#000000', textColor: '#F97316' };
+    }
+    
+    if (gameConfig.expressMode.includes(currentRound)) {
+          currentSegments[8] = { text: 'EXPRESS', value: 1000, type: SegmentType.EXPRESS, color: '#94A3B8', textColor: '#000' };
+    }
 
+    if (gameConfig.millionWedgeMode.includes(currentRound)) {
+        currentSegments[11] = { text: 'BANKROTT', value: 0, type: SegmentType.BANKRUPT, color: '#000000', textColor: '#EF4444' };
+        currentSegments[12] = { text: '1 MILLION', value: 0, type: SegmentType.MILLION, color: '#10B981', textColor: '#fff' };
+        currentSegments[13] = { text: 'BANKROTT', value: 0, type: SegmentType.BANKRUPT, color: '#000000', textColor: '#EF4444' };
+    }
+
+    const isMystery = gameConfig.mysteryRound.includes(currentRound);
     if (isMystery) {
         if (!mysteryRevealed) {
             currentSegments[6] = { text: '?', value: 0, type: SegmentType.MYSTERY, color: '#7E22CE', textColor: '#fff' };
@@ -405,21 +730,16 @@ function App() {
 
     const segmentAngle = 360 / currentSegments.length; 
     const segmentIndex = Math.floor(hitAngle / segmentAngle);
-    
     const safeIndex = (segmentIndex + currentSegments.length) % currentSegments.length;
     const segment = currentSegments[safeIndex];
     
-    // Apply Multiplier
     const multiplier = Math.pow(2, currentRound - 1);
     let calculatedValue = segment.value * multiplier;
     
-    // Update Jackpot if it's a Value spin (and not bankrupt/lose turn)
-    // Only updates if enabled
     if (gameConfig.enableJackpot && segment.type === SegmentType.VALUE && calculatedValue > 0) {
         setJackpotValue(prev => prev + calculatedValue);
     }
     
-    // Special Case Handling
     if (segment.type === SegmentType.MYSTERY) {
         setMessage("MYSTERY FELD! Risiko oder Sicherheit?");
         setGameState(GameState.MYSTERY_DECISION);
@@ -429,6 +749,12 @@ function App() {
     if (segment.type === SegmentType.RISK) {
         setMessage("RISIKO FELD! Willst du es wagen?");
         setGameState(GameState.RISK_DECISION);
+        return;
+    }
+    
+    if (segment.type === SegmentType.EXPRESS) {
+        setMessage("EXPRESS! Einsteigen oder Passen?");
+        setGameState(GameState.EXPRESS_DECISION);
         return;
     }
 
@@ -443,17 +769,18 @@ function App() {
             setPlayers(prev => {
                 const copy = [...prev];
                 copy[activePlayerIndex].roundScore = 0;
-                copy[activePlayerIndex].inventory = []; // Lose inventory on Bankrupt? Usually yes
+                copy[activePlayerIndex].inventory = []; 
+                copy[activePlayerIndex].hasMillionWedge = false; 
                 return copy;
             });
-            
             if (players[activePlayerIndex].hasExtraSpin) {
                  setGameState(GameState.EXTRA_SPIN_PROMPT);
             } else {
-                 setMessage('BANKROTT!');
+                 setMessage(getFlavorMessage('BANKROTT!', 'BANKRUPT'));
                  setTimeout(nextTurn, 2000);
             }
         } else if (segment.type === SegmentType.LOSE_TURN) {
+             // Logic handles replace for Single Player, so this case shouldn't hit for 1 player normally
              soundService.playWrong();
              setMessage('AUSSETZEN!');
              if (players[activePlayerIndex].hasExtraSpin) {
@@ -468,29 +795,35 @@ function App() {
                  copy[activePlayerIndex].hasExtraSpin = true;
                  return copy;
              });
-             setMessage('EXTRA DREH GEWONNEN! NOCHMAL DREHEN!');
+             setMessage('EXTRA DREH GEWONNEN!');
              setGameState(GameState.SPIN_OR_SOLVE);
         } else if (segment.type === SegmentType.FREE_PLAY) {
-             setMessage('FREISPIEL! Vokal oder Konsonant ohne Risiko.');
+             setMessage('FREISPIEL!');
              setIsFreePlayTurn(true);
-             setGameState(GameState.GUESSING_CONSONANT); // Or Vowel, but standard UI path start
+             setGameState(GameState.GUESSING_CONSONANT); 
         } else if (segment.type === SegmentType.JACKPOT) {
-             setMessage(`JACKPOT CHANCE! (${jackpotValue} DM)`);
-             // Treated as normal value guess, but marks possible win if solved later
+             setMessage(`JACKPOT CHANCE!`);
              setGameState(GameState.GUESSING_CONSONANT);
         } else if (segment.type === SegmentType.GIFT) {
-             // Explicit items list as requested
              const gifts = ['AUTO', 'REISE', 'HAUS', 'MOTORRAD', 'ROLLER', 'BIKE', 'E-BIKE', 'KREUZFAHRT'];
              const wonGift = gifts[Math.floor(Math.random() * gifts.length)];
-             setMessage(`GESCHENK AUFGEDECKT: ${wonGift}!`);
+             setMessage(`GESCHENK: ${wonGift}!`);
              setPlayers(prev => {
                  const copy = [...prev];
                  copy[activePlayerIndex].inventory.push(wonGift);
                  return copy;
              });
              setGameState(GameState.GUESSING_CONSONANT);
+        } else if (segment.type === SegmentType.MILLION) {
+             setMessage(`MILLIONEN KEIL AUFGEHOBEN!`);
+             soundService.playCorrect();
+             setPlayers(prev => {
+                 const copy = [...prev];
+                 copy[activePlayerIndex].hasMillionWedge = true;
+                 return copy;
+             });
+             setGameState(GameState.GUESSING_CONSONANT);
         } else {
-             // Standard Value
              setGameState(GameState.GUESSING_CONSONANT);
         }
     }, 500);
@@ -502,63 +835,65 @@ function App() {
     setGuessedLetters(prev => new Set(prev).add(char));
 
     if (count > 0) {
-        soundService.playReveal();
-        
+        soundService.playReveal(count); 
         if (isRiskTurn) {
-            // RISK MODE LOGIC: Double or Nothing
             setPlayers(prev => {
                 const copy = [...prev];
-                copy[activePlayerIndex].roundScore *= 2; // Double the score
+                copy[activePlayerIndex].roundScore *= 2;
                 return copy;
             });
-            setMessage(`RISIKO GEWONNEN! ${count}x ${char}. Score verdoppelt!`);
+            setMessage(`RISIKO GEWONNEN! Score verdoppelt!`);
             setIsRiskTurn(false);
         } else {
-            // STANDARD LOGIC
             let value = (lastSpinResult || 0);
-            const totalAdd = value * count;
+            if (isExpressRun) value = 1000;
             
+            const totalAdd = value * count;
             setPlayers(prev => {
                 const copy = [...prev];
                 copy[activePlayerIndex].roundScore += totalAdd;
                 return copy;
             });
-            setMessage(`${count}x ${char}! (+${totalAdd} DM)`);
+            setMessage(getFlavorMessage(`${count}x ${char}! (+${totalAdd} DM)`, 'REVEAL'));
         }
-        
         setRevealingLetters(new Set([char]));
         setTimeout(() => setRevealingLetters(new Set()), 1000);
-        
-        // Free Play allows continued turn
         setGameState(GameState.SPIN_OR_SOLVE);
     } else {
         soundService.playWrong();
-        
         if (isRiskTurn) {
-            // RISK LOST: All Money Gone
             setPlayers(prev => {
                 const copy = [...prev];
                 copy[activePlayerIndex].roundScore = 0;
+                copy[activePlayerIndex].hasMillionWedge = false; 
                 return copy;
             });
-            setMessage(`RISIKO VERLOREN! Kein ${char}. Alles weg.`);
+            setMessage(`RISIKO VERLOREN! Alles weg.`);
             setIsRiskTurn(false);
             setTimeout(nextTurn, 2000);
+        } else if (isExpressRun) {
+            setPlayers(prev => {
+                const copy = [...prev];
+                copy[activePlayerIndex].roundScore = 0;
+                copy[activePlayerIndex].hasMillionWedge = false; 
+                return copy;
+            });
+            setMessage(`EXPRESS FEHLER! BANKROTT!`);
+            setTimeout(nextTurn, 2000);
         } else if (isFreePlayTurn) {
-            setMessage(`Kein ${char}. (Freispiel - Kein Verlust)`);
-            setTimeout(() => setGameState(GameState.SPIN_OR_SOLVE), 1500); // Keep turn
+            setMessage(getFlavorMessage(`Kein ${char}. (Freispiel)`, 'NO_LETTER'));
+            setTimeout(() => setGameState(GameState.SPIN_OR_SOLVE), 1500); 
         } else if (players[activePlayerIndex].hasExtraSpin) {
              setMessage(`Leider kein ${char}.`);
              setTimeout(() => setGameState(GameState.EXTRA_SPIN_PROMPT), 1500);
         } else {
-             setMessage(`Leider kein ${char}.`);
+             setMessage(getFlavorMessage(`Leider kein ${char}.`, 'NO_LETTER'));
              setTimeout(nextTurn, 1500);
         }
     }
   };
 
   const handleBuyVowel = (char: string) => {
-     // Free play vowel is free
      if (!isFreePlayTurn) {
         setPlayers(prev => {
             const copy = [...prev];
@@ -566,26 +901,34 @@ function App() {
             return copy;
         });
      }
-     
      setGuessedLetters(prev => new Set(prev).add(char));
-     const count = puzzle.text.split(char).length - 1;
-     
-     if (count > 0) {
-         soundService.playReveal();
-         setMessage(isFreePlayTurn ? `${count}x ${char} (Gratis).` : `${count}x ${char} gekauft.`);
+     const count = puzzle?.text.split(char).length || 0 - 1; 
+     if (puzzle && puzzle.text.split(char).length - 1 > 0) {
+         const foundCount = puzzle.text.split(char).length - 1;
+         soundService.playReveal(foundCount);
+         setMessage(getFlavorMessage(`${foundCount}x ${char} gekauft.`, 'REVEAL'));
          setRevealingLetters(new Set([char]));
          setTimeout(() => setRevealingLetters(new Set()), 1000);
          setGameState(GameState.SPIN_OR_SOLVE);
      } else {
          soundService.playWrong();
-         if (isFreePlayTurn) {
-             setMessage(`Kein ${char}. (Freispiel - Kein Verlust)`);
+         if (isExpressRun) {
+            setPlayers(prev => {
+                const copy = [...prev];
+                copy[activePlayerIndex].roundScore = 0;
+                copy[activePlayerIndex].hasMillionWedge = false; 
+                return copy;
+            });
+            setMessage(`EXPRESS FEHLER! BANKROTT!`);
+            setTimeout(nextTurn, 2000);
+         } else if (isFreePlayTurn) {
+             setMessage(`Kein ${char}.`);
              setTimeout(() => setGameState(GameState.SPIN_OR_SOLVE), 1500);
          } else if (players[activePlayerIndex].hasExtraSpin) {
             setMessage(`Kein ${char}.`);
             setTimeout(() => setGameState(GameState.EXTRA_SPIN_PROMPT), 1500);
          } else {
-            setMessage(`Kein ${char}.`);
+            setMessage(getFlavorMessage(`Kein ${char}.`, 'NO_LETTER'));
             setTimeout(nextTurn, 1500);
          }
      }
@@ -601,55 +944,42 @@ function App() {
   const handleSolve = (guess: string) => {
     if (!puzzle) return;
     const normalize = (s: string) => s.replace(/-/g, '').trim();
-
     if (normalize(guess) === normalize(puzzle.text)) {
         soundService.playSolve();
         speakPuzzle(puzzle.text);
-        
-        if (gameState === GameState.BONUS_ROUND_SOLVE) {
-             handleBonusWin();
-        } else if (gameState === GameState.TOSS_UP) { // If in toss up
-             endTossUp(activePlayerIndex);
-        } else {
-             endRound(activePlayerIndex);
-        }
+        if (gameState === GameState.BONUS_ROUND_SOLVE) handleBonusWin();
+        else if (gameState === GameState.TOSS_UP) endTossUp(activePlayerIndex);
+        else endRound(activePlayerIndex);
     } else {
         soundService.playWrong();
         if (gameState === GameState.TOSS_UP) {
             setMessage("Falsch!");
-            // Penalty: Next player gets control to buzz?
-            // In our simple TossUp, we just let anyone buzz again.
-            // But we need to exit Solving state
             setGameState(GameState.TOSS_UP);
-            // Restart Interval?
-            if (tossUpInterval) {
-               // We should technically restart interval here if we stopped it
-               // But for simplicity, let's just let them buzz again without more reveals for a moment
-            }
+        } else if (isExpressRun) {
+            setPlayers(prev => {
+                const copy = [...prev];
+                copy[activePlayerIndex].roundScore = 0;
+                copy[activePlayerIndex].hasMillionWedge = false; 
+                return copy;
+            });
+            setMessage(`EXPRESS FEHLER! BANKROTT!`);
+            setTimeout(nextTurn, 2000);
         } else if (players[activePlayerIndex].hasExtraSpin && gameState !== GameState.BONUS_ROUND_SOLVE) {
             setMessage('Falsch.');
             setTimeout(() => setGameState(GameState.EXTRA_SPIN_PROMPT), 1500);
         } else {
-            setMessage('Das war falsch.');
-            if (gameState === GameState.BONUS_ROUND_SOLVE) {
-                handleGameOver();
-            } else {
-                setTimeout(nextTurn, 2000);
-            }
+            setMessage(getFlavorMessage('Falsch.', 'ERROR'));
+            if (gameState === GameState.BONUS_ROUND_SOLVE) handleGameOver();
+            else setTimeout(nextTurn, 2000);
         }
     }
   };
 
   const endTossUp = (winnerIndex: number) => {
-      setMessage(`SCHNELLRUNDE GEWONNEN! (+1000 DM Startkapital)`);
-      // The prize is 1000 DM Startkapital for Round 1.
-      // We do NOT bank it immediately into totalScore, because it is 'Startkapital' (at risk in Round 1).
-      
-      const allChars = new Set(puzzle?.text.replace(/ /g, '').split(''));
-      setGuessedLetters(allChars);
-      
+      setMessage(`SCHNELLRUNDE GEWONNEN! (+1000 DM Start)`);
+      const text = puzzle ? puzzle.text : '';
+      setGuessedLetters(new Set(text.replace(/ /g, '').split('')));
       setTimeout(() => {
-          // Start Round 1, winner starts, with 1000 Startkapital for the round
           startRound(1, winnerIndex, gameConfig, 1000);
       }, 3000);
   };
@@ -663,21 +993,31 @@ function App() {
         copy[winnerIndex].roundScore = winAmount; 
         copy[winnerIndex].totalScore += winAmount;
         copy[winnerIndex].roundsWon += 1;
-        copy[winnerIndex].inventory = []; // Clear inventory (cashed out or prizes awarded)
+        copy[winnerIndex].inventory = []; 
         return copy;
     });
     
-    setMessage(`Runde vorbei! ${players[winnerIndex].name} gewinnt ${winAmount} DM.`);
-    const allChars = new Set(puzzle?.text.replace(/ /g, '').split(''));
-    setGuessedLetters(allChars);
+    setMessage(getFlavorMessage(`Runde vorbei! ${players[winnerIndex].name} gewinnt ${winAmount} DM.`, 'SOLVE'));
+    const text = puzzle ? puzzle.text : '';
+    setGuessedLetters(new Set(text.replace(/ /g, '').split('')));
     
-    const totalRounds = gameConfig.mysteryRound === 4 ? 4 : 3;
-
+    // Determine Max Rounds based on config
+    const allModes = [
+        ...gameConfig.mysteryRound,
+        ...gameConfig.riskMode,
+        ...gameConfig.millionWedgeMode,
+        ...gameConfig.expressMode,
+        ...gameConfig.extraSpinMode
+    ];
+    const maxRoundInConfig = Math.max(3, ...allModes);
+    
     setTimeout(() => {
-        if (currentRound < totalRounds) {
-            const nextRound = currentRound + 1;
-            setCurrentRound(nextRound);
-            startRound(nextRound, (nextRound - 1) % 3, gameConfig);
+        if (currentRound < maxRoundInConfig) {
+            setCurrentRound(prev => {
+                const next = prev + 1;
+                startRound(next, (next - 1) % gameConfig.playerCount, gameConfig);
+                return next;
+            });
         } else {
             prepareBonusRound();
         }
@@ -690,7 +1030,6 @@ function App() {
           return b.totalScore - a.totalScore;
       });
       const winner = sorted[0];
-      
       setActivePlayerIndex(winner.id);
       setGameState(GameState.BONUS_ROUND_INTRO);
   };
@@ -699,20 +1038,14 @@ function App() {
       setGameState(GameState.SETUP);
       setMessage('Generiere Bonus Rätsel...');
       setGuessedLetters(new Set()); 
-      
       try {
           const newPuzzle = (await geminiService.generatePuzzle('hard', usedCategories, gameConfig.categoryTheme)) as Puzzle;
           setPuzzle(newPuzzle);
           setBonusRoundSelection([]);
-          
-          // Auto reveal digits/hyphens
-          const initialLetters = getInitialGuessedLetters(newPuzzle.text as string);
-          setGuessedLetters(initialLetters);
-
+          setGuessedLetters(getInitialGuessedLetters(newPuzzle.text as string));
           setGameState(GameState.BONUS_WHEEL_SPIN);
       } catch (e: any) {
-          const errorMessage = e instanceof Error ? e.message : String(e);
-          console.error(errorMessage);
+          console.error(e);
       }
   };
 
@@ -736,32 +1069,61 @@ function App() {
           copy[activePlayerIndex].totalScore += bonusPrize;
           return copy;
       });
-      setMessage(`BONUS GEWONNEN! +${bonusPrize} DM`);
+      setMessage(getFlavorMessage(`BONUS GEWONNEN! +${bonusPrize} DM`, 'SOLVE'));
+      
+      if (puzzle) setGuessedLetters(new Set(puzzle.text.replace(/ /g, '').split('')));
+      
       setTimeout(handleGameOver, 4000);
   };
 
   const handleGameOver = () => {
       setGameState(GameState.GAME_OVER);
       soundService.playSolve();
-      if (puzzle) {
-           setGuessedLetters(new Set(puzzle.text.replace(/ /g, '').split('')));
+      if (puzzle) setGuessedLetters(new Set(puzzle.text.replace(/ /g, '').split('')));
+      
+      if (gameState === GameState.BONUS_ROUND_SOLVE && bonusPrize > 0) {
+          setMessage(`Leider falsch! Der Preis wäre ${bonusPrize} DM gewesen.`);
+          soundService.playBankrupt(); 
+      }
+  };
+
+  // Apply Theme Background
+  const getThemeBg = () => {
+      switch(gameConfig.visualTheme) {
+          case '80S': return 'bg-gradient-to-b from-purple-900 via-pink-900 to-black';
+          case '90S': return 'bg-indigo-600'; 
+          case '2000S': return 'bg-gradient-to-b from-gray-300 to-gray-500';
+          default: return 'bg-gradient-to-b from-blue-900 via-purple-900 to-black';
       }
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center pb-10 bg-gradient-to-b from-blue-900 via-purple-900 to-black text-white overflow-hidden font-sans selection:bg-yellow-500 selection:text-black">
+    <div className={`min-h-screen flex flex-col items-center pb-10 text-white overflow-hidden font-sans selection:bg-yellow-500 selection:text-black ${getThemeBg()}`}>
       
-      <header className="w-full p-4 bg-black/50 backdrop-blur-md border-b border-white/10 flex justify-between items-center z-50 sticky top-0 shadow-lg">
+      <header className={`w-full p-4 border-b flex justify-between items-center z-50 sticky top-0 shadow-lg backdrop-blur-md ${
+          gameConfig.visualTheme === '80S' ? 'bg-black/80 border-cyan-400' : 
+          gameConfig.visualTheme === '90S' ? 'bg-yellow-400 border-black text-black' :
+          gameConfig.visualTheme === '2000S' ? 'bg-white/80 border-gray-400 text-gray-800' :
+          'bg-black/50 border-white/10'
+      }`}>
         <div className="flex items-center gap-3">
              <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-yellow-400 to-orange-600 border-2 border-white shadow-inner animate-pulse"></div>
-             <h1 className="text-2xl md:text-3xl font-display tracking-wider text-white drop-shadow-md">GLÜCKSRAD</h1>
+             <h1 className={`text-2xl md:text-3xl font-display tracking-wider drop-shadow-md ${gameConfig.visualTheme === '80S' ? 'text-cyan-400' : ''}`}>GLÜCKSRAD</h1>
         </div>
-        <div className="text-xl font-bold text-yellow-400 flex gap-4">
+        <div className={`text-xl font-bold flex gap-4 items-center ${gameConfig.visualTheme === '90S' ? 'text-black' : 'text-yellow-400'}`}>
             <span>
                 {gameState === GameState.TOSS_UP ? 'SCHNELLRUNDE' : (
-                    currentRound > (gameConfig.mysteryRound === 4 ? 4 : 3) ? 'BONUS' : `${currentRound} / ${gameConfig.mysteryRound === 4 ? 4 : 3}`
+                    currentRound > Math.max(3, ...gameConfig.mysteryRound, ...gameConfig.riskMode, ...gameConfig.millionWedgeMode, ...gameConfig.expressMode, ...gameConfig.extraSpinMode) ? 'BONUS' : `${currentRound} / ${Math.max(3, ...gameConfig.mysteryRound, ...gameConfig.riskMode, ...gameConfig.millionWedgeMode, ...gameConfig.expressMode, ...gameConfig.extraSpinMode)}`
                 )}
             </span>
+            {(gameState !== GameState.WELCOME && gameState !== GameState.GAME_CONFIG && gameState !== GameState.SETUP) && (
+                 <button 
+                    onClick={handleQuitGame}
+                    className="ml-2 bg-red-600 hover:bg-red-700 text-white text-xs md:text-sm px-3 py-1 rounded uppercase font-bold shadow border border-white/20 transition-colors"
+                 >
+                     Beenden
+                 </button>
+            )}
         </div>
       </header>
 
@@ -772,6 +1134,7 @@ function App() {
                 puzzle={puzzle} 
                 guessedLetters={guessedLetters} 
                 revealingLetters={revealingLetters}
+                visualTheme={gameConfig.visualTheme}
             />
         </div>
 
@@ -783,7 +1146,7 @@ function App() {
                         activePlayerIndex={activePlayerIndex}
                         currentRound={currentRound}
                         isBonusWheelMode={false}
-                        isMysteryRound={gameConfig.mysteryRound === 5 || (currentRound === gameConfig.mysteryRound && gameConfig.mysteryRound !== 0)}
+                        isMysteryRound={gameConfig.mysteryRound.includes(currentRound)}
                         mysteryRevealed={mysteryRevealed}
                         config={gameConfig}
                         jackpotValue={jackpotValue}
@@ -812,7 +1175,6 @@ function App() {
             </div>
         )}
         
-        {/* Bonus Wheel Mode Display */}
         {(gameState === GameState.BONUS_WHEEL_SPIN) && (
              <div className="scale-100 mb-8">
                  <Wheel 
@@ -849,23 +1211,21 @@ function App() {
                 onConfigStart={handleConfigStart}
                 onMysteryDecision={handleMysteryDecision}
                 onRiskDecision={handleRiskDecision}
+                onExpressDecision={handleExpressDecision}
                 onTossUpBuzz={handleTossUpBuzz}
                 gameConfig={gameConfig}
                 jackpotValue={jackpotValue}
+                focusedIndex={focusedIndex}
+                isExpressRun={isExpressRun}
              />
         </div>
       </main>
 
-      {/* Overlays */}
-      
       {gameState === GameState.WELCOME && (
         <div className="fixed inset-0 bg-black/95 z-[60] flex flex-col items-center justify-center text-center p-4">
            <h1 className="text-7xl md:text-9xl font-display text-transparent bg-clip-text bg-gradient-to-b from-yellow-300 to-orange-600 mb-8 drop-shadow-[0_0_35px_rgba(234,179,8,0.6)]">
                GLÜCKSRAD
            </h1>
-           <p className="text-white text-xl mb-12 max-w-md leading-relaxed">
-               Willkommen! 3 Spieler. Der Spieler mit den meisten gewonnenen Runden spielt im Finale um den Jackpot.
-           </p>
            <button 
              onClick={enterConfig}
              className="bg-green-600 hover:bg-green-500 text-white text-3xl font-bold py-6 px-16 rounded-full shadow-[0_0_20px_rgba(22,163,74,0.6)] transition transform hover:scale-105 active:scale-95"
@@ -878,7 +1238,7 @@ function App() {
       {gameState === GameState.ROUND_START && (
          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[60] flex items-center justify-center">
              <div className="text-7xl font-display text-transparent bg-clip-text bg-gradient-to-br from-white to-gray-400 animate-bounce drop-shadow-xl">
-                 {currentRound === gameConfig.mysteryRound ? 'MYSTERY RUNDE' : `RUNDE ${currentRound}`}
+                 {gameConfig.mysteryRound.includes(currentRound) ? 'MYSTERY RUNDE' : `RUNDE ${currentRound}`}
              </div>
          </div>
       )}
@@ -896,7 +1256,6 @@ function App() {
       {gameState === GameState.GAME_OVER && (
           <div className="fixed inset-0 bg-black/95 z-[70] flex flex-col items-center justify-center text-center p-4">
             <h2 className="text-5xl text-white mb-8 font-display">ERGEBNIS</h2>
-            
             <div className="flex flex-col gap-4 w-full max-w-md mb-12">
                 {players.sort((a, b) => b.totalScore - a.totalScore).map((p, i) => (
                     <div key={i} className={`flex justify-between items-center p-4 rounded-lg border ${i === 0 ? 'bg-yellow-900/50 border-yellow-500' : 'bg-gray-600 border-gray-500'}`}>
@@ -907,15 +1266,12 @@ function App() {
                     </div>
                 ))}
             </div>
-
-            <button 
-                onClick={() => {
-                    setGameState(GameState.WELCOME);
-                }}
-                className="bg-blue-600 hover:bg-blue-500 text-white text-2xl font-bold py-4 px-12 rounded-full shadow-lg"
-            >
-                NEUES SPIEL
-            </button>
+            
+            <div className="flex gap-4">
+                <button onClick={() => setGameState(GameState.WELCOME)} className="bg-blue-600 hover:bg-blue-500 text-white text-2xl font-bold py-4 px-12 rounded-full shadow-lg">
+                    NEUES SPIEL
+                </button>
+            </div>
           </div>
       )}
     </div>
